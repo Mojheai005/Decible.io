@@ -213,7 +213,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
 
                 if (audioRef.current && newItem.audioUrl) {
                     audioRef.current.src = newItem.audioUrl;
-                    audioRef.current.play().catch(console.error);
+                    audioRef.current.play().catch(() => {});
                 }
 
                 showToast('Audio generated successfully!', 'success');
@@ -221,7 +221,6 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                 showToast('Generation failed. Please try again.', 'error');
             }
         } catch (err) {
-            console.error('Generation failed:', err);
             showToast('Generation failed. Please try again.', 'error');
         } finally {
             setIsGenerating(false);
@@ -244,7 +243,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
             audioRef.current.pause();
             setIsPlaying(false);
         } else {
-            audioRef.current.play().catch(console.error);
+            audioRef.current.play().catch(() => {});
             setIsPlaying(true);
         }
     };
@@ -268,7 +267,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
 
         if (audioRef.current && item.audioUrl) {
             audioRef.current.src = item.audioUrl;
-            audioRef.current.play().catch(console.error);
+            audioRef.current.play().catch(() => {});
         }
     };
 
@@ -307,7 +306,6 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err) {
-            console.error('Download failed:', err);
             window.open(currentTrack.audioUrl, '_blank');
         }
     };
@@ -352,24 +350,13 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                                     onChange={(e) => setText(e.target.value)}
                                     spellCheck={false}
                                 />
-                                <div className="flex justify-end mt-4">
-                                    <div className="text-xs font-semibold text-gray-300 group-focus-within:text-gray-400 transition-colors bg-gray-50 px-3 py-1 rounded-full border border-transparent group-focus-within:border-gray-100">
-                                        {text.length} / 5,000
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Floating Generate Button */}
                     <div className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-auto transition-all duration-500 ${currentTrack ? 'bottom-32' : 'bottom-12'}`}>
-                        <div className="bg-white/90 backdrop-blur-xl p-1.5 rounded-full border border-gray-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.08)] flex items-center gap-4 transition-transform hover:scale-[1.01] pl-6 pr-2">
-                            {/* Credits */}
-                            <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-gray-400">
-                                <span className={`w-1.5 h-1.5 rounded-full ${profileLoading ? 'bg-gray-300 animate-pulse' : 'bg-emerald-500'}`}></span>
-                                [ Credits left: {profileLoading ? '...' : formattedCredits} ]
-                            </div>
-
+                        <div className="bg-white/90 backdrop-blur-xl p-1.5 rounded-full border border-gray-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.08)] flex items-center gap-2 transition-transform hover:scale-[1.01] px-2">
                             {/* Generate Button */}
                             <button
                                 onClick={handleGenerate}
@@ -390,7 +377,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                             </button>
 
                             {/* Char Count */}
-                            <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-gray-300 pl-2 border-l border-gray-100 h-6">
+                            <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-gray-400 px-3 py-1.5 bg-gray-50 rounded-full">
                                 {text.length} / 5,000
                             </div>
                         </div>
@@ -446,7 +433,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                                     </div>
                                 </div>
 
-                                {/* Settings Sliders - Redesigned like ElevenLabs */}
+                                {/* Settings Sliders */}
                                 <div className="space-y-6 pt-2">
                                     <Slider
                                         label="Speed"
@@ -494,10 +481,10 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                                     />
                                 </div>
 
-                                {/* Language Override Section */}
+                                {/* Speech Pronunciation Section */}
                                 <div className="pt-6 border-t border-gray-100">
                                     <Toggle
-                                        label="Language Override"
+                                        label="Speech Pronunciation"
                                         checked={langOverride}
                                         onChange={setLangOverride}
                                     />

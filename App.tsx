@@ -5,72 +5,112 @@ import { Dashboard } from './components/views/Dashboard';
 import { TextToSpeech } from './components/views/TextToSpeech';
 import { VoiceLibrary } from './components/views/VoiceLibrary';
 import { Profile } from './components/views/Profile';
-import { Bell, Menu } from 'lucide-react';
+import { HelpCenter } from './components/views/HelpCenter';
+import { Bell, Menu, FileAudio } from 'lucide-react';
 import { AudioProvider } from './src/contexts/GlobalAudioContext';
 import { NotificationProvider, useNotifications } from './src/contexts/NotificationContext';
 import { GlobalPlayer } from './components/GlobalPlayer';
 import { ToastContainer } from './components/ui/Toast';
 import { NotificationDropdown } from './components/ui/NotificationDropdown';
+import { createClient } from '@/lib/supabase/client';
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState('landing');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const bellButtonRef = useRef<HTMLButtonElement>(null);
 
   const { unreadCount, addNotification, showToast } = useNotifications();
 
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    setView('dashboard');
+  // Check real Supabase auth state on mount
+  useEffect(() => {
+    const supabase = createClient();
 
-    // Welcome notification
-    addNotification({
-      title: 'Welcome to Decibal!',
-      message: 'Start exploring our voice library or create your first voice generation.',
-      type: 'success',
+    // Check existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setIsLoggedIn(true);
+        setView('dashboard');
+      }
+      setIsLoading(false);
     });
 
-    showToast('Successfully logged in!', 'success');
+    // Listen for auth state changes (login/logout/token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        setIsLoggedIn(true);
+        setView('dashboard');
+        addNotification({
+          title: 'Welcome to Decibal!',
+          message: 'Start exploring our voice library or create your first voice generation.',
+          type: 'success',
+        });
+        showToast('Successfully logged in!', 'success');
+      } else if (event === 'SIGNED_OUT') {
+        setIsLoggedIn(false);
+        setView('landing');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [addNotification, showToast]);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setIsLoggedIn(false);
+    setView('landing');
+    showToast('Logged out successfully', 'info');
   };
 
-  // Add some demo notifications on first load (for testing)
-  useEffect(() => {
-    if (isLoggedIn) {
-      // Delayed notification for demo purposes
-      const timer = setTimeout(() => {
-        addNotification({
-          title: 'New voices available',
-          message: '15 new premium voices have been added to the library.',
-          type: 'info',
-        });
-      }, 5000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [isLoggedIn, addNotification]);
-
   const renderView = () => {
-    switch (view) {
+    // Check if view has query params (e.g., library?tab=latest)
+    const [baseView, queryString] = view.split('?');
+    const params = new URLSearchParams(queryString || '');
+    const tabParam = params.get('tab');
+
+    switch (baseView) {
       case 'dashboard':
         return <Dashboard onNavigate={setView} />;
       case 'tts':
         return <TextToSpeech onNavigate={setView} />;
       case 'voice-creator':
       case 'library':
-        return <VoiceLibrary onNavigate={setView} />;
+        return <VoiceLibrary onNavigate={setView} initialTab={tabParam || undefined} />;
       case 'profile':
-        return <Profile />;
+        return <Profile onLogout={handleLogout} />;
       case 'voice-to-text':
-        return <div className="p-10 text-center text-gray-500">Voice to Text - Coming Soon</div>;
+        return (
+          <div className="flex flex-col items-center justify-center h-full text-center p-10">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+              <FileAudio className="w-8 h-8 text-gray-400" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Voice to Text</h2>
+            <p className="text-gray-500">This feature is coming soon.</p>
+          </div>
+        );
+      case 'help':
+        return <HelpCenter />;
       default:
         return <Dashboard onNavigate={setView} />;
     }
   };
 
+  // Show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white">
+        <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
-    return <LandingPage onLogin={handleLogin} />;
+    return <LandingPage />;
   }
 
   return (
@@ -111,6 +151,7 @@ const AppContent: React.FC = () => {
               ref={bellButtonRef}
               onClick={() => setShowNotifications(!showNotifications)}
               className="p-2 hover:bg-gray-100 rounded-full text-gray-500 relative transition-colors"
+              aria-label="Notifications"
             >
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
@@ -130,6 +171,7 @@ const AppContent: React.FC = () => {
             <button
               onClick={() => setView('profile')}
               className="w-8 h-8 bg-gradient-to-tr from-green-700 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-transparent hover:ring-gray-200 transition-all"
+              aria-label="Profile"
             >
               U
             </button>

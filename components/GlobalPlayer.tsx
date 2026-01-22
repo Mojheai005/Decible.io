@@ -77,7 +77,6 @@ export const GlobalPlayer: React.FC = () => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err) {
-            console.error('Download failed:', err);
             window.open(currentVoice.previewUrl, '_blank');
         }
     };

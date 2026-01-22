@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
-import { Play, Mic, Music, Globe, BookOpen, Layers, Sparkles, Loader2, ArrowRight, Check, PlayCircle, Star, Github, Twitter, Linkedin } from 'lucide-react';
+import { Play, Mic, Music, Globe, BookOpen, Layers, Sparkles, Loader2, ArrowRight, Check, PlayCircle, Star, Github, Twitter, Linkedin, HelpCircle, Users, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShaderAvatar, ShaderType } from '../ui/ShaderAvatar';
 import { AuthModal } from '../modals/AuthModal';
 
-interface LandingPageProps {
-  onLogin: () => void;
-}
-
-export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
+export const LandingPage: React.FC = () => {
   const [demoText, setDemoText] = useState("In the ancient land of Eldoria, where skies shimmered and forests whispered secrets to the wind, lived a dragon named Zephyros.");
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeVoice, setActiveVoice] = useState(0);
@@ -35,7 +31,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       <AuthModal
         isOpen={showAuth}
         onClose={() => setShowAuth(false)}
-        onLogin={() => { setShowAuth(false); onLogin(); }}
       />
 
       {/* Navigation */}
@@ -52,9 +47,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               Decibal
             </h1>
             <div className="hidden lg:flex items-center gap-8 text-sm font-medium text-gray-500">
-              {['Creative Platform', 'Agents Platform', 'Developers', 'Resources', 'Pricing'].map(item => (
-                <a key={item} href="#" className="hover:text-black transition-colors">{item}</a>
-              ))}
+              <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-black transition-colors">Home</button>
+              <button onClick={() => setShowAuth(true)} className="hover:text-black transition-colors">Text to Speech</button>
+              <button onClick={() => setShowAuth(true)} className="hover:text-black transition-colors">Discover Voices</button>
+              <button onClick={() => window.scrollTo({ top: document.body.scrollHeight * 0.6, behavior: 'smooth' })} className="hover:text-black transition-colors">Pricing</button>
+              <a href="mailto:support@decibal.io" className="hover:text-black transition-colors">Help</a>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -243,12 +240,31 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
           </div>
         </motion.div>
 
-        {/* Trusted By */}
+        {/* Feature Stats */}
         <div className="max-w-7xl mx-auto mt-24 text-center">
-          <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-10">Trusted by the world's best teams</p>
-          <div className="flex flex-wrap justify-center items-center gap-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-            {['Duolingo', 'Washington Post', 'NY Times', 'Tencent', 'NetEase', 'Ubisoft'].map((brand) => (
-              <span key={brand} className="text-2xl font-black text-gray-800 cursor-default">{brand}</span>
+          <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-10">Why creators choose Decibal</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              { value: '100+', label: 'Premium Voices', icon: Users, color: 'from-purple-500 to-indigo-500' },
+              { value: '50+', label: 'Languages', icon: Globe, color: 'from-blue-500 to-cyan-500' },
+              { value: '5K', label: 'Free Credits', icon: Zap, color: 'from-amber-500 to-orange-500' },
+              { value: '24/7', label: 'Support', icon: HelpCircle, color: 'from-green-500 to-emerald-500' },
+            ].map((stat, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1, duration: 0.5 }}
+                whileHover={{ scale: 1.05, y: -5 }}
+                className="bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-gray-300 transition-all cursor-default group"
+              >
+                <div className={`w-12 h-12 mx-auto mb-4 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform`}>
+                  <stat.icon className="w-6 h-6" />
+                </div>
+                <div className="text-3xl font-black text-gray-900 mb-1">{stat.value}</div>
+                <div className="text-sm font-medium text-gray-500">{stat.label}</div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -265,33 +281,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             <div>
               <h3 className="font-bold mb-4 text-sm">Product</h3>
               <ul className="space-y-3 text-sm text-gray-500">
-                <li><a href="#" className="hover:text-black">Text to Speech</a></li>
-                <li><a href="#" className="hover:text-black">Voice Cloning</a></li>
-                <li><a href="#" className="hover:text-black">Dubbing Studio</a></li>
-                <li><a href="#" className="hover:text-black">Audio Native</a></li>
+                <li><button onClick={() => setShowAuth(true)} className="hover:text-black transition-colors">Text to Speech</button></li>
+                <li><button onClick={() => setShowAuth(true)} className="hover:text-black transition-colors">Voice Cloning</button></li>
+                <li><button onClick={() => setShowAuth(true)} className="hover:text-black transition-colors">Dubbing Studio</button></li>
+                <li><button onClick={() => setShowAuth(true)} className="hover:text-black transition-colors">Audio Native</button></li>
               </ul>
             </div>
             <div>
               <h3 className="font-bold mb-4 text-sm">Resources</h3>
               <ul className="space-y-3 text-sm text-gray-500">
-                <li><a href="#" className="hover:text-black">Community</a></li>
-                <li><a href="#" className="hover:text-black">Help Center</a></li>
-                <li><a href="#" className="hover:text-black">API Docs</a></li>
-                <li><a href="#" className="hover:text-black">Blog</a></li>
+                <li><a href="mailto:support@decibal.io" className="hover:text-black transition-colors">Help Center</a></li>
+                <li><span className="text-gray-400 cursor-default" title="Coming soon">API Docs</span></li>
+                <li><span className="text-gray-400 cursor-default" title="Coming soon">Blog</span></li>
+                <li><span className="text-gray-400 cursor-default" title="Coming soon">Community</span></li>
               </ul>
             </div>
             <div>
               <h3 className="font-bold mb-4 text-sm">Company</h3>
               <ul className="space-y-3 text-sm text-gray-500">
-                <li><a href="#" className="hover:text-black">About</a></li>
-                <li><a href="#" className="hover:text-black">Careers</a></li>
-                <li><a href="#" className="hover:text-black">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-black">Privacy Policy</a></li>
+                <li><a href="/terms" className="hover:text-black transition-colors">Terms of Service</a></li>
+                <li><a href="/privacy" className="hover:text-black transition-colors">Privacy Policy</a></li>
+                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-black transition-colors">About</button></li>
+                <li><a href="mailto:support@decibal.io" className="hover:text-black transition-colors">Careers</a></li>
               </ul>
             </div>
           </div>
           <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-gray-50">
-            <div className="text-xs text-gray-400 font-medium">© 2025 Decibal Inc. All rights reserved.</div>
+            <div className="text-xs text-gray-400 font-medium">© {new Date().getFullYear()} Decibal Inc. All rights reserved.</div>
             <div className="flex gap-6 mt-4 md:mt-0">
               <Github className="w-5 h-5 text-gray-400 hover:text-black cursor-pointer transition-colors" />
               <Twitter className="w-5 h-5 text-gray-400 hover:text-black cursor-pointer transition-colors" />

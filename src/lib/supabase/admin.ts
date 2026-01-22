@@ -3,9 +3,10 @@
 // ===========================================
 // This client bypasses RLS - use with caution
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-let adminClient: ReturnType<typeof createClient> | null = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let adminClient: SupabaseClient<any, 'public', any> | null = null
 
 /**
  * Get the Supabase admin client with service role key

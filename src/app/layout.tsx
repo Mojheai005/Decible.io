@@ -11,6 +11,12 @@ const roboto = Roboto({
 export const metadata: Metadata = {
     title: 'Decibal | Text to Speech & AI Voice Generator',
     description: 'Professional AI voice generation platform. Create realistic speech, voices, and sound effects.',
+    icons: { icon: '/favicon.svg' },
+    openGraph: {
+        title: 'Decibal | Text to Speech & AI Voice Generator',
+        description: 'Professional AI voice generation platform. Create realistic speech, voices, and sound effects.',
+        type: 'website',
+    },
 }
 
 export default function RootLayout({

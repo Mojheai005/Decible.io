@@ -9,10 +9,12 @@ import { useNotifications } from '@/contexts/NotificationContext';
 
 interface VoiceLibraryProps {
   onNavigate?: (view: string) => void;
+  initialTab?: string;
 }
 
-// YOUR ORIGINAL CATEGORIES
+// YOUR ORIGINAL CATEGORIES with All button first
 const CATEGORIES = [
+  { id: '', label: 'All', icon: FolderOpen },
   { id: 'Commentary', label: 'Commentary', icon: MessageSquare },
   { id: 'Documentary', label: 'Documentary', icon: Tv },
   { id: 'Storytelling', label: 'Storytelling', icon: BookOpen },
@@ -20,7 +22,7 @@ const CATEGORIES = [
   { id: 'Crime & Suspense', label: 'Crime & Suspense', icon: User },
 ];
 
-// YOUR ORIGINAL USE CASES with ElevenLabs-style design
+// Voice use case categories
 const USE_CASES = [
   {
     id: 'youtube',
@@ -80,7 +82,7 @@ const getShaderType = (name: string, category: string): ShaderType => {
   return shaders[hash % shaders.length];
 };
 
-// Use Case Card Component - ElevenLabs style
+// Use Case Card Component
 const UseCaseCard: React.FC<{
   label: string;
   icon: string;
@@ -105,7 +107,7 @@ const UseCaseCard: React.FC<{
   );
 };
 
-// Voice Card Component with SHADER AVATAR
+// Voice Card Component with SHADER AVATAR (for Trending section - grid view)
 const VoiceCard: React.FC<{
   voice: ApiVoice;
   isPlaying: boolean;
@@ -194,7 +196,140 @@ const VoiceCard: React.FC<{
   );
 };
 
-export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
+// Voice Row Component (for list view)
+const VoiceRow: React.FC<{
+  voice: ApiVoice;
+  isPlaying: boolean;
+  isLoading: boolean;
+  isSaved: boolean;
+  onPlay: (e: React.MouseEvent) => void;
+  onSave: (e: React.MouseEvent) => void;
+  onClick: () => void;
+}> = ({ voice, isPlaying, isLoading, isSaved, onPlay, onSave, onClick }) => {
+  // Get flag emoji based on language
+  const getLanguageFlag = (lang: string) => {
+    const flags: Record<string, string> = {
+      'English': '🇺🇸',
+      'Hindi': '🇮🇳',
+      'Spanish': '🇪🇸',
+      'French': '🇫🇷',
+      'German': '🇩🇪',
+      'Italian': '🇮🇹',
+      'Portuguese': '🇧🇷',
+      'Japanese': '🇯🇵',
+      'Korean': '🇰🇷',
+      'Chinese': '🇨🇳',
+      'Russian': '🇷🇺',
+      'Arabic': '🇸🇦',
+      'Turkish': '🇹🇷',
+      'Dutch': '🇳🇱',
+      'Polish': '🇵🇱',
+    };
+    return flags[lang] || '🌍';
+  };
+
+  // Format usage count
+  const formatUsage = (count?: number) => {
+    if (!count) return '-';
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000) return `${(count / 1000).toFixed(0)}K`;
+    return count.toString();
+  };
+
+  return (
+    <div
+      onClick={onClick}
+      className="group flex items-center gap-4 px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 cursor-pointer transition-colors"
+    >
+      {/* Avatar */}
+      <div className="relative shrink-0">
+        <div className="w-10 h-10 rounded-full overflow-hidden shadow-sm">
+          <ShaderAvatar type={getShaderType(voice.name, voice.category)} />
+        </div>
+        {isSaved && (
+          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+            <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+          </div>
+        )}
+      </div>
+
+      {/* Name & Description */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+            {voice.name}
+          </h3>
+          {voice.gender && (
+            <span className="hidden sm:inline-flex text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded capitalize">
+              {voice.gender}
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-gray-500 truncate max-w-[300px]">
+          {voice.description || voice.descriptive || `${voice.accent || ''} ${voice.category || ''}`.trim() || 'Voice'}
+        </p>
+      </div>
+
+      {/* Language & Accent */}
+      <div className="hidden md:flex items-center gap-2 min-w-[140px]">
+        <span className="text-lg">{getLanguageFlag(voice.language)}</span>
+        <div className="flex flex-col">
+          <span className="text-sm text-gray-700">{voice.language}</span>
+          {voice.accent && voice.accent !== 'Neutral' && (
+            <span className="text-xs text-gray-400">{voice.accent}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Category */}
+      <div className="hidden lg:block min-w-[120px]">
+        <span className="inline-flex text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md">
+          {voice.category}
+        </span>
+      </div>
+
+      {/* Usage Count */}
+      <div className="hidden lg:block min-w-[70px] text-right">
+        <span className="text-sm text-gray-500 font-medium">{formatUsage(voice.usageCount)}</span>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 w-20 justify-center">
+        <button
+          onClick={onPlay}
+          disabled={isLoading}
+          className={`p-2.5 rounded-full transition-all ${
+            isLoading
+              ? 'bg-amber-100 text-amber-600 scale-110'
+              : isPlaying
+                ? 'bg-blue-100 text-blue-600 scale-110'
+                : 'hover:bg-gray-100 text-gray-400 hover:text-gray-700'
+          }`}
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="w-4 h-4" />
+          ) : (
+            <Play className="w-4 h-4" />
+          )}
+        </button>
+        <button
+          onClick={onSave}
+          className={`p-2.5 rounded-full transition-all ${
+            isSaved
+              ? 'bg-green-100 text-green-600'
+              : 'hover:bg-gray-100 text-gray-400 hover:text-gray-700'
+          }`}
+        >
+          {isSaved ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialTab }) => {
   const voiceData = useVoices();
   const voices = voiceData.voices || [];
   const isLoading = voiceData.isLoading;
@@ -211,7 +346,9 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
   const { showToast } = useNotifications();
   const { playVoice, currentVoice, isPlaying, isLoadingPreview } = useGlobalAudio();
 
-  const [activeTab, setActiveTab] = useState<'explore' | 'my-voices' | 'default'>('explore');
+  const [activeTab, setActiveTab] = useState<'explore' | 'my-voices' | 'default' | 'latest'>(
+    initialTab === 'latest' ? 'latest' : 'explore'
+  );
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -258,23 +395,46 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
   const filteredVoices = useMemo(() => {
     let result = [...voices];
 
+
     if (activeTab === 'my-voices') {
       const savedIds = new Set(myVoices.map(v => v.voiceId));
       result = result.filter(v => savedIds.has(v.id));
+    }
+
+    if (activeTab === 'latest') {
+      // Sort by newest first for latest tab
+      result = result.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     }
 
     if (selectedCategory) {
       result = result.filter(v => v.category === selectedCategory);
     }
 
+    // Language filter - exact match or contains
     if (appliedFilters.language) {
-      result = result.filter(v => v.language?.toLowerCase().includes(appliedFilters.language!.toLowerCase()));
+      const filterLang = appliedFilters.language.toLowerCase();
+      result = result.filter(v => {
+        const voiceLang = (v.language || '').toLowerCase();
+        return voiceLang === filterLang || voiceLang.includes(filterLang);
+      });
     }
+
+    // Accent filter - exact match or contains
     if (appliedFilters.accent) {
-      result = result.filter(v => v.accent?.toLowerCase().includes(appliedFilters.accent!.toLowerCase()));
+      const filterAccent = appliedFilters.accent.toLowerCase();
+      result = result.filter(v => {
+        const voiceAccent = (v.accent || '').toLowerCase();
+        return voiceAccent === filterAccent || voiceAccent.includes(filterAccent);
+      });
     }
+
+    // Gender filter - case insensitive match
     if (appliedFilters.gender) {
-      result = result.filter(v => v.gender?.toLowerCase() === appliedFilters.gender!.toLowerCase());
+      const filterGender = appliedFilters.gender.toLowerCase();
+      result = result.filter(v => {
+        const voiceGender = (v.gender || '').toLowerCase();
+        return voiceGender === filterGender;
+      });
     }
 
     if (debouncedSearchQuery) {
@@ -288,12 +448,15 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
       );
     }
 
-    result.sort((a, b) => {
-      if (sortOption === 'popular') return (b.usageCount || 0) - (a.usageCount || 0);
-      if (sortOption === 'newest') return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-      if (sortOption === 'alphabetical') return a.name.localeCompare(b.name);
-      return 0;
-    });
+    // Only apply sort option if not on latest tab (latest tab already sorted by newest)
+    if (activeTab !== 'latest') {
+      result.sort((a, b) => {
+        if (sortOption === 'popular') return (b.usageCount || 0) - (a.usageCount || 0);
+        if (sortOption === 'newest') return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        if (sortOption === 'alphabetical') return a.name.localeCompare(b.name);
+        return 0;
+      });
+    }
 
     return result;
   }, [voices, selectedCategory, debouncedSearchQuery, activeTab, myVoices, sortOption, appliedFilters]);
@@ -362,7 +525,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
         initialFilters={appliedFilters}
       />
 
-      {/* Header - ElevenLabs style layout */}
+      {/* Header */}
       <div className="px-6 py-4 bg-white border-b border-gray-200 sticky top-0 z-[100] overflow-visible">
         {/* Row 1: Tabs & Actions */}
         <div className="flex items-center justify-between mb-4">
@@ -376,6 +539,14 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
             >
               <Globe className="w-4 h-4" />
               Explore
+            </button>
+            <button
+              onClick={() => setActiveTab('latest')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'latest' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Latest
             </button>
             <button
               onClick={() => setActiveTab('my-voices')}
@@ -575,8 +746,8 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
-        {/* Trending Voices Section */}
-        {!searchQuery && !selectedCategory && activeTab === 'explore' && trendingVoices.length > 0 && (
+        {/* Trending Voices Section - Hide when filters are active */}
+        {!searchQuery && !selectedCategory && !hasActiveFilters && activeTab === 'explore' && trendingVoices.length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-4">
               <h2 className="text-lg font-bold text-gray-900">Trending voices</h2>
@@ -613,8 +784,8 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
           </section>
         )}
 
-        {/* YOUR ORIGINAL USE CASES with ElevenLabs-style cards */}
-        {!searchQuery && !selectedCategory && activeTab === 'explore' && (
+        {/* Use case cards - Hide when filters are active */}
+        {!searchQuery && !selectedCategory && !hasActiveFilters && activeTab === 'explore' && (
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-gray-900">Handpicked for your use case</h2>
@@ -651,31 +822,38 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
           </section>
         )}
 
-        {/* All Voices Section */}
+        {/* All Voices Section - List View */}
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900">
               {searchQuery ? `Search results for "${searchQuery}"` :
                selectedCategory ? `${selectedCategory} voices` :
-               activeTab === 'my-voices' ? 'My Saved Voices' : 'All voices'}
+               activeTab === 'my-voices' ? 'My Saved Voices' :
+               activeTab === 'latest' ? 'Latest voices' :
+               hasActiveFilters ? 'Filtered voices' : 'All voices'}
             </h2>
             <span className="text-sm text-gray-500">{filteredVoices.length} voices</span>
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 bg-gray-200 rounded-xl" />
-                    <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-gray-100 rounded w-1/2" />
-                    </div>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-gray-100 animate-pulse">
+                  <div className="w-10 h-10 bg-gray-200 rounded-full shrink-0" />
+                  <div className="flex-1">
+                    <div className="h-4 bg-gray-200 rounded w-1/3 mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-1/2" />
                   </div>
-                  <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
-                    <div className="flex-1 h-9 bg-gray-100 rounded-lg" />
-                    <div className="w-9 h-9 bg-gray-100 rounded-lg" />
+                  <div className="hidden md:flex items-center gap-2 w-32">
+                    <div className="w-6 h-6 bg-gray-100 rounded" />
+                    <div className="h-3 bg-gray-100 rounded w-16" />
+                  </div>
+                  <div className="hidden lg:block w-24">
+                    <div className="h-3 bg-gray-100 rounded w-full" />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="w-8 h-8 bg-gray-100 rounded-full" />
+                    <div className="w-8 h-8 bg-gray-100 rounded-full" />
                   </div>
                 </div>
               ))}
@@ -692,9 +870,20 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* List Header */}
+              <div className="hidden md:flex items-center gap-4 px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50 rounded-t-xl border border-gray-200">
+                <div className="w-10 shrink-0" /> {/* Avatar space */}
+                <div className="flex-1">Name</div>
+                <div className="hidden md:block min-w-[140px]">Language</div>
+                <div className="hidden lg:block min-w-[120px]">Category</div>
+                <div className="hidden lg:block min-w-[70px] text-right">Usage</div>
+                <div className="w-20 text-center">Actions</div>
+              </div>
+
+              {/* Voice Rows */}
+              <div className="bg-white rounded-b-xl md:rounded-t-none rounded-xl border border-gray-200 md:border-t-0 overflow-hidden">
                 {displayedVoices.map((voice) => (
-                  <VoiceCard
+                  <VoiceRow
                     key={voice.id}
                     voice={voice}
                     isPlaying={currentVoice?.id === voice.id && isPlaying}
@@ -708,7 +897,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
               </div>
 
               {displayedVoices.length < filteredVoices.length && (
-                <div className="mt-8 flex justify-center">
+                <div className="mt-6 flex justify-center">
                   <button
                     onClick={() => setDisplayLimit(prev => prev + 24)}
                     className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm text-sm"

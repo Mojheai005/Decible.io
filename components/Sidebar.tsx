@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, Mic, Music, Users, MessageSquare, Menu, ChevronRight, ChevronDown, Plus, Edit2, Check, Sparkles, Home, Trash2 } from 'lucide-react';
+import { LayoutGrid, Mic, Music, Users, MessageSquare, Menu, ChevronRight, ChevronDown, Plus, Edit2, Check, Sparkles, Home, Trash2, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUserProfile } from '@/hooks/useUserProfile';
 
@@ -89,10 +89,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
   };
 
   const menuItems = [
-    { id: 'dashboard', icon: LayoutGrid, label: 'Overview' }, // Mapped 'Home' functionality to Overview
+    { id: 'dashboard', icon: Home, label: 'Home' },
     { id: 'tts', icon: Mic, label: 'Text to Speech' },
     { id: 'library', icon: Users, label: 'Voices' },
-    { id: 'create', icon: Plus, label: 'Create Voice' }, // Assuming 'Voice Creator' maps to this
+    { id: 'create', icon: Plus, label: 'Create Voice' },
+    { id: 'help', icon: HelpCircle, label: 'Help Center' },
   ];
 
   // Removed "Coming Soon" and other extra items as per feedback
@@ -231,12 +232,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
               <button
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
-                title={isCollapsed ? item.label : undefined}
-                className={`group relative w-full flex items-center rounded-xl transition-all duration-200 ${isCollapsed ? 'justify-center py-3' : 'gap-3.5 px-3.5 py-2.5'
-                  } ${isActive ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
+                className={`group relative w-full flex rounded-xl transition-all duration-200 ${
+                  isCollapsed
+                    ? 'flex-col items-center justify-center py-2 px-1'
+                    : 'flex-row items-center gap-3.5 px-3.5 py-2.5'
+                } ${isActive ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
               >
                 <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                {!isCollapsed && (
+                {isCollapsed ? (
+                  <span className="text-[10px] mt-1 text-center leading-tight">{item.label.split(' ')[0]}</span>
+                ) : (
                   <span className="whitespace-nowrap overflow-hidden text-ellipsis">{item.label}</span>
                 )}
               </button>

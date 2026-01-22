@@ -29,15 +29,8 @@ const PROTECTED_ROUTES = [
     '/settings',
 ]
 
-// API routes that require authentication
-const PROTECTED_API_ROUTES = [
-    '/api/generate',
-    '/api/user',
-    '/api/tts',
-    '/api/credits',
-    '/api/payments/create-order',
-    '/api/payments/verify',
-]
+// API routes handle their own authentication internally
+const PROTECTED_API_ROUTES: string[] = []
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl

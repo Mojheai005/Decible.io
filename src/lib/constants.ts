@@ -22,7 +22,7 @@ export const RATE_LIMITS = {
 
 // ===========================================
 // VOICE GENERATION SETTINGS
-// Based on ElevenLabs/DubVoice API parameters
+// Based on DubVoice API parameters
 // ===========================================
 
 export const VOICE_SETTINGS = {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, BookOpen, Image as ImageIcon, Smile, Music, Video, ArrowRight, Loader2 } from 'lucide-react';
+import { Mic, FileAudio, Wand2, Music, ArrowRight, Loader2 } from 'lucide-react';
 import { ShaderAvatar, ShaderType } from '../ui/ShaderAvatar';
 import { useVoices } from '@/hooks/useVoices';
 import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
@@ -29,32 +29,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     voice, // Keep original voice for playback
   }));
 
-  const handleToolClick = (toolLabel: string) => {
-    // Navigate to TTS for voice-related tools
+  const handleToolClick = (toolId: string) => {
     if (onNavigate) {
-      if (toolLabel === 'Instant speech' || toolLabel === 'Audiobook') {
+      if (toolId === 'tts') {
         onNavigate('tts');
-      } else if (toolLabel === 'Image & Video' || toolLabel === 'Dubbed video') {
-        onNavigate('library');
-      } else {
-        // Default to TTS for other tools
-        onNavigate('tts');
+      } else if (toolId === 'vtt') {
+        onNavigate('tts'); // Voice to text - navigate to TTS for now
       }
+      // 'voice-changer' and 'music' are coming soon - no action
     }
   };
 
-  const handleVoiceClick = (voiceItem: typeof latestVoices[0]) => {
-    // Play the voice preview
-    if (voiceItem.voice && voiceItem.voice.previewUrl) {
-      playVoice(voiceItem.voice);
-    }
-  };
-
-  const handleArrowClick = (voiceItem: typeof latestVoices[0], e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Navigate to voice library
+  const handleVoiceClick = () => {
+    // Navigate to voice library with latest tab
     if (onNavigate) {
-      onNavigate('library');
+      onNavigate('library?tab=latest');
     }
   };
 
@@ -66,34 +55,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       </div>
 
       {/* Tool Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
         {[
-          { icon: Mic, label: 'Instant speech', color: 'bg-blue-100 text-blue-600' },
-          { icon: BookOpen, label: 'Audiobook', color: 'bg-red-100 text-red-600' },
-          { icon: ImageIcon, label: 'Image & Video', color: 'bg-green-100 text-green-600' },
-          { icon: Smile, label: 'ElevenLabs Agents', color: 'bg-purple-100 text-purple-600' },
-          { icon: Music, label: 'Music', color: 'bg-orange-100 text-orange-600' },
+          { id: 'tts', icon: Mic, label: 'Text to Speech', color: 'bg-blue-100 text-blue-600', comingSoon: false },
+          { id: 'vtt', icon: FileAudio, label: 'Voice to Text', color: 'bg-green-100 text-green-600', comingSoon: false },
+          { id: 'voice-changer', icon: Wand2, label: 'Voice Changer', color: 'bg-purple-100 text-purple-600', comingSoon: true },
+          { id: 'music', icon: Music, label: 'Create Music', color: 'bg-orange-100 text-orange-600', comingSoon: true },
         ].map((tool, i) => (
           <div
             key={i}
-            onClick={() => handleToolClick(tool.label)}
-            className="group relative bg-gray-50 hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-lg transition-all rounded-3xl p-6 h-48 flex flex-col items-center justify-center cursor-pointer"
+            onClick={() => !tool.comingSoon && handleToolClick(tool.id)}
+            className={`group relative bg-gray-50 hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-lg transition-all rounded-3xl p-6 h-48 flex flex-col items-center justify-center ${tool.comingSoon ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
           >
-            <div className={`w-14 h-14 rounded-2xl ${tool.color} flex items-center justify-center mb-4 transition-transform group-hover:scale-110`}>
+            {tool.comingSoon && (
+              <div className="absolute top-3 right-3 px-2 py-1 bg-gray-200 text-gray-600 text-xs font-medium rounded-full">
+                Coming Soon
+              </div>
+            )}
+            <div className={`w-14 h-14 rounded-2xl ${tool.color} flex items-center justify-center mb-4 transition-transform ${!tool.comingSoon ? 'group-hover:scale-110' : ''}`}>
               <tool.icon className="w-7 h-7" />
             </div>
             <span className="font-medium text-gray-900 text-center">{tool.label}</span>
           </div>
         ))}
-        <div
-          onClick={() => handleToolClick('Dubbed video')}
-          className="group relative bg-gray-50 hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-lg transition-all rounded-3xl p-6 h-48 flex flex-col items-center justify-center cursor-pointer"
-        >
-          <div className={`w-14 h-14 rounded-2xl bg-teal-100 text-teal-600 flex items-center justify-center mb-4 transition-transform group-hover:scale-110`}>
-            <Video className="w-7 h-7" />
-          </div>
-          <span className="font-medium text-gray-900 text-center">Dubbed video</span>
-        </div>
       </div>
 
       {/* Latest from library */}
@@ -114,8 +98,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             {latestVoices.map((voiceItem, i) => (
               <div
                 key={voiceItem.id || i}
-                onClick={() => handleVoiceClick(voiceItem)}
-                className="flex items-start gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group border border-transparent hover:border-gray-100"
+                onClick={handleVoiceClick}
+                className="flex items-start gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group border border-gray-100 hover:border-gray-200 hover:shadow-sm"
               >
                 <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 relative border border-gray-100">
                   <ShaderAvatar type={voiceItem.shader as ShaderType} />
@@ -131,13 +115,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   </h3>
                   <p className="text-gray-500 text-sm mt-1 line-clamp-2">{voiceItem.desc}</p>
                 </div>
-                <button
-                  onClick={(e) => handleArrowClick(voiceItem, e)}
-                  className="opacity-0 group-hover:opacity-100 p-2 hover:bg-gray-200 rounded-full transition-all"
-                  title="View in library"
-                >
+                <div className="p-2 group-hover:bg-gray-200 rounded-full transition-all">
                   <ArrowRight className="w-5 h-5 text-gray-600" />
-                </button>
+                </div>
               </div>
             ))}
             {latestVoices.length === 0 && !isLoading && (

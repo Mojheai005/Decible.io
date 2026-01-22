@@ -77,7 +77,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onMar
 interface NotificationDropdownProps {
     isOpen: boolean
     onClose: () => void
-    anchorRef?: React.RefObject<HTMLElement>
+    anchorRef?: React.RefObject<HTMLElement | null>
 }
 
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ isOpen, onClose, anchorRef }) => {

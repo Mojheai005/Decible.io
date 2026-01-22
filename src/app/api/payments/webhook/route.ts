@@ -87,7 +87,6 @@ export async function POST(request: NextRequest) {
         const event = JSON.parse(rawBody) as RazorpayWebhookEvent;
         const admin = getAdminClient();
 
-        console.log(`[Webhook] Received event: ${event.event}`);
 
         // 4. Handle different event types
         switch (event.event) {
@@ -111,13 +110,14 @@ export async function POST(request: NextRequest) {
 
                 // Add credits if not already added
                 if (userId && credits > 0) {
-                    const { data: order } = await admin
+                    const { data: orderRecord } = await admin
                         .from('payment_orders')
                         .select('credits_added')
                         .eq('razorpay_order_id', orderId)
                         .single();
 
-                    if (!order?.credits_added) {
+                    const orderData = orderRecord as { credits_added?: boolean } | null;
+                    if (!orderData?.credits_added) {
                         await admin.rpc('add_credits', {
                             p_user_id: userId,
                             p_amount: credits,
@@ -130,7 +130,6 @@ export async function POST(request: NextRequest) {
                             .update({ credits_added: true })
                             .eq('razorpay_order_id', orderId);
 
-                        console.log(`[Webhook] Added ${credits} credits to user ${userId}`);
                     }
                 }
                 break;
@@ -149,7 +148,6 @@ export async function POST(request: NextRequest) {
                     })
                     .eq('razorpay_order_id', payment.order_id);
 
-                console.log(`[Webhook] Payment failed for order: ${payment.order_id}`);
                 break;
             }
 
@@ -162,12 +160,11 @@ export async function POST(request: NextRequest) {
                     .update({ status: 'paid' })
                     .eq('razorpay_order_id', order.id);
 
-                console.log(`[Webhook] Order paid: ${order.id}`);
                 break;
             }
 
             default:
-                console.log(`[Webhook] Unhandled event type: ${event.event}`);
+                break;
         }
 
         return NextResponse.json({ received: true });

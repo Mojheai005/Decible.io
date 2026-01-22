@@ -22,9 +22,7 @@ export const VideoBackground: React.FC<VideoBackgroundProps> = ({ src }) => {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play().catch((error) => {
-            console.error("Auto-play failed", error);
-        });
+        video.play().catch(() => {});
       });
 
       return () => {
@@ -34,9 +32,7 @@ export const VideoBackground: React.FC<VideoBackgroundProps> = ({ src }) => {
       // For Safari and native HLS support
       video.src = src;
       video.addEventListener('loadedmetadata', () => {
-        video.play().catch((error) => {
-            console.error("Auto-play failed", error);
-        });
+        video.play().catch(() => {});
       });
     }
   }, [src]);

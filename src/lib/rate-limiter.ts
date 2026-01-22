@@ -40,7 +40,7 @@ export async function checkRateLimit(
 
         if (error) {
             // If RPC fails, fall back to allowing the request (fail-open)
-            logger.error('Rate limit check failed', { error, identifier })
+            logger.error('Rate limit check failed', error instanceof Error ? error : new Error(String(error)), { identifier })
             return {
                 success: true,
                 limit,
@@ -80,7 +80,7 @@ export async function checkRateLimit(
         }
     } catch (error) {
         // Fail-open: allow request if rate limiting fails
-        logger.error('Rate limiter error', { error, identifier })
+        logger.error('Rate limiter error', error instanceof Error ? error : new Error(String(error)), { identifier })
         return {
             success: true,
             limit,
@@ -294,13 +294,13 @@ export async function cleanupExpiredRateLimits(): Promise<number> {
             .select('key')
 
         if (error) {
-            logger.error('Failed to cleanup rate limits', { error })
+            logger.error('Failed to cleanup rate limits', error instanceof Error ? error : new Error(String(error)))
             return 0
         }
 
         return data?.length || 0
     } catch (error) {
-        logger.error('Rate limit cleanup error', { error })
+        logger.error('Rate limit cleanup error', error instanceof Error ? error : new Error(String(error)))
         return 0
     }
 }

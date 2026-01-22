@@ -60,9 +60,10 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        const profileData = profile as { credits_remaining?: number; subscription_tier?: string } | null;
         return NextResponse.json({
-            credits: profile?.credits_remaining || 0,
-            tier: profile?.subscription_tier || 'free',
+            credits: profileData?.credits_remaining || 0,
+            tier: profileData?.subscription_tier || 'free',
             ...(includeHistory && {
                 transactions,
                 pagination: {

@@ -35,7 +35,6 @@ export async function GET(request: Request) {
         const text = PREVIEW_TEXTS[Math.floor(Math.random() * PREVIEW_TEXTS.length)];
 
         // Generate preview using TTS
-        console.log(`Generating preview for voice: ${voiceId}`);
 
         const initResponse = await fetch(`${DUBVOICE_BASE_URL}/tts`, {
             method: 'POST',

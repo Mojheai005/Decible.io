@@ -16,7 +16,7 @@ async function getAuthenticatedUser() {
 }
 
 // Get user profile with credits
-async function getUserProfile(userId: string) {
+async function getUserProfile(userId: string): Promise<{ credits_remaining: number; subscription_tier: string } | null> {
     const admin = getAdminClient();
     const { data, error } = await admin
         .from('user_profiles')
@@ -28,7 +28,7 @@ async function getUserProfile(userId: string) {
         console.error('Error fetching user profile:', error);
         return null;
     }
-    return data;
+    return data as { credits_remaining: number; subscription_tier: string };
 }
 
 // Deduct credits and log transaction
@@ -158,7 +158,6 @@ export async function POST(request: NextRequest) {
         // 7. Submit Generation Task to DubVoice
         const apiKey = getNextApiKey();
 
-        console.log(`[TTS] User: ${userId}, Characters: ${charactersUsed}, Credits: ${creditsNeeded}`);
 
         const initResponse = await fetch(`${DUBVOICE_BASE_URL}/tts`, {
             method: 'POST',

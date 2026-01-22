@@ -62,6 +62,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const userProfile = profile as { subscription_tier?: string; is_first_month?: boolean };
+
         // 3. Parse request body
         const body = await request.json() as CreateOrderRequest;
         const { type, planId, topupPackageId } = body;
@@ -96,7 +98,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Check if this is first month for creator plan promo
-            const isFirstMonth = profile.is_first_month && plan.id === 'creator';
+            const isFirstMonth = !!(userProfile.is_first_month && plan.id === 'creator');
             amount = getEffectivePrice(plan, isFirstMonth);
             credits = plan.credits;
             description = `${plan.displayName} Plan${isFirstMonth ? ' (First Month Special)' : ''}`;
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Free tier cannot top up
-            if (profile.subscription_tier === 'free') {
+            if (userProfile.subscription_tier === 'free') {
                 return NextResponse.json(
                     { error: 'Free tier cannot purchase top-ups. Please upgrade first.' },
                     { status: 403 }
@@ -125,7 +127,7 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            amount = getTopupPrice(topupPackageId, profile.subscription_tier);
+            amount = getTopupPrice(topupPackageId, userProfile.subscription_tier || 'free');
             if (amount === 0) {
                 return NextResponse.json(
                     { error: 'Top-up not available for your plan' },
@@ -175,7 +177,6 @@ export async function POST(request: NextRequest) {
             user_agent: request.headers.get('user-agent'),
         });
 
-        console.log(`[Payment] Order created: ${order.id} | User: ${user.id} | Type: ${orderType} | Amount: ₹${amount / 100}`);
 
         // 7. Return order details
         return NextResponse.json({
@@ -188,7 +189,7 @@ export async function POST(request: NextRequest) {
             keyId: process.env.RAZORPAY_KEY_ID,
             prefill: {
                 email: user.email,
-                name: profile.name || '',
+                name: (profile as { name?: string })?.name || '',
             },
         });
 
@@ -220,8 +221,9 @@ export async function GET(request: NextRequest) {
                 .single();
 
             if (profile) {
-                userTier = profile.subscription_tier;
-                isFirstMonth = profile.is_first_month;
+                const p = profile as { subscription_tier?: string; is_first_month?: boolean };
+                userTier = p.subscription_tier || 'free';
+                isFirstMonth = p.is_first_month ?? true;
             }
         }
 

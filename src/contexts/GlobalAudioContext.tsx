@@ -9,7 +9,7 @@ interface AudioContextType {
     pauseVoice: () => void;
     togglePlay: () => void;
     clearVoice: () => void;
-    audioRef: React.RefObject<HTMLAudioElement>;
+    audioRef: React.RefObject<HTMLAudioElement | null>;
     duration: number;
     currentTime: number;
     seek: (time: number) => void;
@@ -27,7 +27,7 @@ const AudioContext = createContext<AudioContextType | undefined>(undefined);
 export const AudioProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentVoice, setCurrentVoice] = useState<Voice | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+    const [isLoadingPreview] = useState(false);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [volume, setVolumeState] = useState(1);
@@ -49,33 +49,18 @@ export const AudioProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setCurrentTime(0);
         setDuration(0);
 
-        // Check if voice has previewUrl or if we have it cached
-        let previewUrl = voice.previewUrl || previewCache.get(voice.id);
+        // Use existing previewUrl from voice data or cache
+        const previewUrl = voice.previewUrl || previewCache.get(voice.id);
 
         if (!previewUrl) {
-            // Generate preview on-demand
-            setIsLoadingPreview(true);
-            setCurrentVoice({ ...voice, previewUrl: '' }); // Set voice immediately to show loading state
+            // No preview available — don't generate via TTS (wastes credits)
+            setCurrentVoice({ ...voice, previewUrl: '' });
+            return;
+        }
 
-            try {
-                const response = await fetch(`/api/voices/preview?voice_id=${voice.id}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    previewUrl = data.previewUrl;
-                    if (previewUrl) {
-                        previewCache.set(voice.id, previewUrl);
-                    }
-                }
-            } catch (error) {
-                console.error('Failed to generate preview:', error);
-            }
-
-            setIsLoadingPreview(false);
-
-            if (!previewUrl) {
-                console.error('No preview URL available for voice:', voice.id);
-                return;
-            }
+        // Cache it for next time
+        if (voice.previewUrl && !previewCache.has(voice.id)) {
+            previewCache.set(voice.id, voice.previewUrl);
         }
 
         // Update voice with preview URL and play

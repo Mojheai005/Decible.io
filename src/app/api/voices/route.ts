@@ -149,7 +149,6 @@ async function fetchAllVoices(apiKey: string): Promise<any[]> {
 
     // Try fetching with page numbers until we get empty results
     while (consecutiveEmptyPages < 2) {
-        console.log(`Fetching voices page ${page}...`);
 
         // Try different pagination parameter styles (different APIs use different params)
         const params = new URLSearchParams({
@@ -172,7 +171,6 @@ async function fetchAllVoices(apiKey: string): Promise<any[]> {
             if (page === 1) {
                 throw new Error(`Failed to fetch voices: ${response.status}`);
             }
-            console.log(`Page ${page} failed with status ${response.status}, stopping`);
             break;
         }
 
@@ -199,11 +197,9 @@ async function fetchAllVoices(apiKey: string): Promise<any[]> {
 
         if (newVoices.length === 0) {
             consecutiveEmptyPages++;
-            console.log(`Page ${page}: No new voices found (${consecutiveEmptyPages} empty pages)`);
         } else {
             consecutiveEmptyPages = 0;
             allVoices.push(...newVoices);
-            console.log(`Page ${page}: Got ${newVoices.length} new voices. Total: ${allVoices.length}`);
         }
 
         // Check explicit pagination indicators
@@ -215,7 +211,6 @@ async function fetchAllVoices(apiKey: string): Promise<any[]> {
                        (data.total_count && allVoices.length < data.total_count);
 
         if (!hasMore && voices.length < pageSize) {
-            console.log('API indicates no more pages');
             break;
         }
 
@@ -223,12 +218,10 @@ async function fetchAllVoices(apiKey: string): Promise<any[]> {
 
         // Safety limit
         if (page > 100) {
-            console.warn('Reached page limit (100), stopping pagination');
             break;
         }
     }
 
-    console.log(`Total voices fetched: ${allVoices.length}`);
     return allVoices;
 }
 
@@ -244,7 +237,6 @@ export async function GET(request: Request) {
         const fetchAll = searchParams.get('fetch_all') === 'true';
 
         // Fetch all voices with pagination
-        console.log('Fetching all voices from DubVoice API...');
         const rawVoices = await fetchAllVoices(apiKey);
         console.log(`Total voices fetched: ${rawVoices.length}`);
 

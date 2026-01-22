@@ -89,11 +89,13 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (order.status === 'completed') {
+        const orderData = order as { id: string; status: string; credits: number; plan_id: string };
+
+        if (orderData.status === 'completed') {
             return NextResponse.json({
                 success: true,
                 message: 'Payment already processed',
-                credits: order.credits,
+                credits: orderData.credits,
             });
         }
 
@@ -106,15 +108,15 @@ export async function POST(request: NextRequest) {
                 razorpay_signature,
                 completed_at: new Date().toISOString(),
             })
-            .eq('id', order.id);
+            .eq('id', orderData.id);
 
         // 6. Add credits to user using stored procedure
         // The add_credits function logs the transaction internally
         const { data: newBalance, error: creditError } = await admin.rpc('add_credits', {
             p_user_id: user.id,
-            p_amount: order.credits,
+            p_amount: orderData.credits,
             p_type: 'topup',
-            p_description: `${order.plan_id} plan purchase`,
+            p_description: `${orderData.plan_id} plan purchase`,
             p_reference_id: razorpay_payment_id,
         });
 
@@ -131,18 +133,17 @@ export async function POST(request: NextRequest) {
             advanced: 'advanced',
         };
 
-        const newTier = tierMapping[order.plan_id] || 'starter';
+        const newTier = tierMapping[orderData.plan_id] || 'starter';
         await admin
             .from('user_profiles')
             .update({ subscription_tier: newTier })
             .eq('id', user.id);
 
-        console.log(`[Payment] Verified and credited: ${order.credits} credits for user ${user.id}`);
 
         return NextResponse.json({
             success: true,
             message: 'Payment verified successfully',
-            credits: order.credits,
+            credits: orderData.credits,
             newBalance: newBalance as number,
         });
 
