@@ -1,0 +1,726 @@
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { Search, Filter, Plus, ChevronDown, ChevronLeft, ChevronRight, Globe, Loader2, Star, Check, Play, Pause, ArrowUpDown, X, MessageSquare, Tv, BookOpen, Smartphone, User, FolderOpen } from 'lucide-react';
+import { ShaderAvatar, ShaderType } from '../ui/ShaderAvatar';
+import { useVoices, Voice as ApiVoice } from '@/hooks/useVoices';
+import { useMyVoices } from '@/hooks/useMyVoices';
+import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
+import { VoiceFilters } from '@/components/modals/VoiceFilters';
+import { useNotifications } from '@/contexts/NotificationContext';
+
+interface VoiceLibraryProps {
+  onNavigate?: (view: string) => void;
+}
+
+// YOUR ORIGINAL CATEGORIES
+const CATEGORIES = [
+  { id: 'Commentary', label: 'Commentary', icon: MessageSquare },
+  { id: 'Documentary', label: 'Documentary', icon: Tv },
+  { id: 'Storytelling', label: 'Storytelling', icon: BookOpen },
+  { id: 'Short Videos', label: 'Short Videos', icon: Smartphone },
+  { id: 'Crime & Suspense', label: 'Crime & Suspense', icon: User },
+];
+
+// YOUR ORIGINAL USE CASES with ElevenLabs-style design
+const USE_CASES = [
+  {
+    id: 'youtube',
+    label: 'Best voices for Youtube',
+    icon: '📺',
+    bgColor: 'bg-gradient-to-br from-violet-100 to-purple-200',
+    searchTerm: 'YouTube'
+  },
+  {
+    id: 'shorts',
+    label: 'Popular Shorts/Reels Voices',
+    icon: '📱',
+    bgColor: 'bg-gradient-to-br from-amber-100 to-orange-200',
+    searchTerm: 'Short Videos'
+  },
+  {
+    id: 'character',
+    label: 'Engaging character voices',
+    icon: '🎭',
+    bgColor: 'bg-gradient-to-br from-slate-100 to-gray-200',
+    searchTerm: 'character'
+  },
+  {
+    id: 'studio',
+    label: 'Studio quality commentary voices',
+    icon: '🎙️',
+    bgColor: 'bg-gradient-to-br from-emerald-100 to-teal-200',
+    searchTerm: 'Commentary'
+  },
+  {
+    id: 'sleep',
+    label: 'Bring your sleep stories to life',
+    icon: '🌙',
+    bgColor: 'bg-gradient-to-br from-indigo-100 to-blue-200',
+    searchTerm: 'Storytelling'
+  },
+  {
+    id: 'documentary',
+    label: 'Epic voices for documentaries',
+    icon: '🎬',
+    bgColor: 'bg-gradient-to-br from-stone-100 to-stone-200',
+    searchTerm: 'Documentary'
+  },
+  {
+    id: 'asmr',
+    label: 'Relaxing voices for ASMR',
+    icon: '🎧',
+    bgColor: 'bg-gradient-to-br from-rose-100 to-pink-200',
+    searchTerm: 'calm'
+  },
+];
+
+// Shader mapping - RESTORED
+const getShaderType = (name: string, category: string): ShaderType => {
+  const shaders: ShaderType[] = ['neon', 'fluid', 'chrome', 'orb', 'waves', 'midnight'];
+  const hash = (name + (category || '')).split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  return shaders[hash % shaders.length];
+};
+
+// Use Case Card Component - ElevenLabs style
+const UseCaseCard: React.FC<{
+  label: string;
+  icon: string;
+  bgColor: string;
+  onClick: () => void;
+}> = ({ label, icon, bgColor, onClick }) => {
+  return (
+    <button
+      onClick={onClick}
+      className={`${bgColor} rounded-2xl p-5 text-left hover:scale-[1.02] transition-transform min-w-[200px] h-[130px] flex flex-col justify-between group shrink-0`}
+    >
+      <div className="text-3xl">{icon}</div>
+      <div className="flex items-center justify-between">
+        <span className="text-gray-900 font-semibold text-sm leading-tight max-w-[130px]">
+          {label}
+        </span>
+        <div className="w-8 h-8 bg-white/80 rounded-full flex items-center justify-center group-hover:bg-white transition-colors">
+          <ChevronRight className="w-4 h-4 text-gray-700" />
+        </div>
+      </div>
+    </button>
+  );
+};
+
+// Voice Card Component with SHADER AVATAR
+const VoiceCard: React.FC<{
+  voice: ApiVoice;
+  isPlaying: boolean;
+  isLoading: boolean;
+  isSaved: boolean;
+  onPlay: (e: React.MouseEvent) => void;
+  onSave: (e: React.MouseEvent) => void;
+  onClick: () => void;
+}> = ({ voice, isPlaying, isLoading, isSaved, onPlay, onSave, onClick }) => {
+  return (
+    <div
+      onClick={onClick}
+      className="group bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all cursor-pointer"
+    >
+      <div className="flex items-start gap-3">
+        {/* SHADER Avatar - RESTORED */}
+        <div className="relative shrink-0">
+          <div className="w-12 h-12 rounded-xl overflow-hidden shadow-sm">
+            <ShaderAvatar type={getShaderType(voice.name, voice.category)} />
+          </div>
+          {isSaved && (
+            <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
+              <Check className="w-3 h-3 text-white" strokeWidth={3} />
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+            {voice.name}
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">{voice.category}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-sm">{voice.language === 'English' ? '🇺🇸' : '🌍'}</span>
+            <span className="text-xs text-gray-500">{voice.language}</span>
+            {voice.tags && voice.tags.length > 1 && (
+              <span className="text-xs text-gray-400">+{voice.tags.length - 1}</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
+        <button
+          onClick={onPlay}
+          disabled={isLoading}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+            isLoading
+              ? 'bg-amber-50 text-amber-600 border border-amber-200'
+              : isPlaying
+                ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading...
+            </>
+          ) : isPlaying ? (
+            <>
+              <Pause className="w-4 h-4" />
+              Playing
+            </>
+          ) : (
+            <>
+              <Play className="w-4 h-4" />
+              Preview
+            </>
+          )}
+        </button>
+        <button
+          onClick={onSave}
+          className={`p-2 rounded-lg transition-colors ${
+            isSaved
+              ? 'bg-green-50 text-green-600 border border-green-200'
+              : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+          }`}
+        >
+          {isSaved ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate }) => {
+  const voiceData = useVoices();
+  const voices = voiceData.voices || [];
+  const isLoading = voiceData.isLoading;
+  const error = voiceData.error;
+
+  const myVoicesData = useMyVoices();
+  const myVoices = myVoicesData?.myVoices || [];
+  const addVoice = myVoicesData?.addVoice;
+  const removeVoice = myVoicesData?.removeVoice;
+  const isVoiceSaved = myVoicesData?.isVoiceInMyVoices;
+  const slotsUsed = myVoicesData?.slotsUsed || 0;
+  const totalSlots = myVoicesData?.slotsTotal || 5;
+
+  const { showToast } = useNotifications();
+  const { playVoice, currentVoice, isPlaying, isLoadingPreview } = useGlobalAudio();
+
+  const [activeTab, setActiveTab] = useState<'explore' | 'my-voices' | 'default'>('explore');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [displayLimit, setDisplayLimit] = useState(24);
+  const [sortOption, setSortOption] = useState<'popular' | 'newest' | 'alphabetical'>('popular');
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [appliedFilters, setAppliedFilters] = useState<{ language?: string; accent?: string; gender?: string }>({});
+  const useCaseRef = useRef<HTMLDivElement>(null);
+  const [isLanguageOpen, setIsLanguageOpen] = useState(false);
+  const [isAccentOpen, setIsAccentOpen] = useState(false);
+
+  // Debounce search
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [searchQuery]);
+
+  // Get unique languages and accents from voices
+  const availableLanguages = useMemo(() => {
+    const langs = new Set(voices.map(v => v.language).filter(Boolean));
+    return Array.from(langs).sort();
+  }, [voices]);
+
+  const availableAccents = useMemo(() => {
+    const accents = new Set(voices.map(v => v.accent).filter(Boolean));
+    return Array.from(accents).sort();
+  }, [voices]);
+
+  // Trending voices - top 6 by usage
+  const trendingVoices = useMemo(() => {
+    return [...voices]
+      .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
+      .slice(0, 6);
+  }, [voices]);
+
+  // Filter logic
+  const filteredVoices = useMemo(() => {
+    let result = [...voices];
+
+    if (activeTab === 'my-voices') {
+      const savedIds = new Set(myVoices.map(v => v.voiceId));
+      result = result.filter(v => savedIds.has(v.id));
+    }
+
+    if (selectedCategory) {
+      result = result.filter(v => v.category === selectedCategory);
+    }
+
+    if (appliedFilters.language) {
+      result = result.filter(v => v.language?.toLowerCase().includes(appliedFilters.language!.toLowerCase()));
+    }
+    if (appliedFilters.accent) {
+      result = result.filter(v => v.accent?.toLowerCase().includes(appliedFilters.accent!.toLowerCase()));
+    }
+    if (appliedFilters.gender) {
+      result = result.filter(v => v.gender?.toLowerCase() === appliedFilters.gender!.toLowerCase());
+    }
+
+    if (debouncedSearchQuery) {
+      const q = debouncedSearchQuery.toLowerCase();
+      result = result.filter(v =>
+        v.name.toLowerCase().includes(q) ||
+        v.category?.toLowerCase().includes(q) ||
+        v.accent?.toLowerCase().includes(q) ||
+        v.description?.toLowerCase().includes(q) ||
+        v.tags?.some(tag => tag.toLowerCase().includes(q))
+      );
+    }
+
+    result.sort((a, b) => {
+      if (sortOption === 'popular') return (b.usageCount || 0) - (a.usageCount || 0);
+      if (sortOption === 'newest') return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      if (sortOption === 'alphabetical') return a.name.localeCompare(b.name);
+      return 0;
+    });
+
+    return result;
+  }, [voices, selectedCategory, debouncedSearchQuery, activeTab, myVoices, sortOption, appliedFilters]);
+
+  const handleToggleSave = useCallback((voice: ApiVoice, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isVoiceSaved(voice.id)) {
+      removeVoice(voice.id);
+      showToast(`Removed "${voice.name}" from My Voices`, 'info');
+    } else {
+      if (slotsUsed < totalSlots) {
+        addVoice(voice.id, voice.name);
+        showToast(`Added "${voice.name}" to My Voices`, 'success');
+      } else {
+        showToast('Max slots reached! Upgrade to add more voices.', 'warning');
+      }
+    }
+  }, [isVoiceSaved, removeVoice, addVoice, slotsUsed, totalSlots, showToast]);
+
+  const handlePlayVoice = useCallback((voice: ApiVoice, e: React.MouseEvent) => {
+    e.stopPropagation();
+    playVoice(voice);
+  }, [playVoice]);
+
+  const handleApplyFilters = (filters: { language?: string; accent?: string; gender?: string }) => {
+    setAppliedFilters(filters);
+    setShowFiltersModal(false);
+  };
+
+  const handleUseCaseClick = (searchTerm: string) => {
+    setSearchQuery(searchTerm);
+  };
+
+  const scrollUseCases = (direction: 'left' | 'right') => {
+    if (useCaseRef.current) {
+      const scrollAmount = 220;
+      useCaseRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const displayedVoices = filteredVoices.slice(0, displayLimit);
+  const hasActiveFilters = appliedFilters.language || appliedFilters.accent || appliedFilters.gender;
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center">
+        <div className="p-4 bg-red-50 rounded-full mb-4">
+          <Globe className="w-8 h-8 text-red-500" />
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900">Failed to load voices</h3>
+        <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-lg">Try Again</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#FAFAFA] relative">
+      {/* Filters Modal */}
+      <VoiceFilters
+        isOpen={showFiltersModal}
+        onClose={() => setShowFiltersModal(false)}
+        onApply={handleApplyFilters}
+        initialFilters={appliedFilters}
+      />
+
+      {/* Header - ElevenLabs style layout */}
+      <div className="px-6 py-4 bg-white border-b border-gray-200 sticky top-0 z-[100] overflow-visible">
+        {/* Row 1: Tabs & Actions */}
+        <div className="flex items-center justify-between mb-4">
+          {/* Tabs */}
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab('explore')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'explore' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              Explore
+            </button>
+            <button
+              onClick={() => setActiveTab('my-voices')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'my-voices' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              My Voices
+            </button>
+            <button
+              onClick={() => setActiveTab('default')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'default' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Default Voices
+            </button>
+          </div>
+
+          {/* Slots & Create */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center">
+                <div className={`w-2 h-2 rounded-full ${slotsUsed > 0 ? 'bg-blue-500' : 'bg-gray-300'}`} />
+              </div>
+              <span>{slotsUsed} / {totalSlots} slots used</span>
+            </div>
+            <button
+              onClick={() => onNavigate?.('tts')}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#0F172A] text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm"
+            >
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-400 to-cyan-300 flex items-center justify-center">
+                <Plus className="w-3 h-3 text-white" />
+              </div>
+              Create a Voice
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Search & Filters */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search library voices..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={() => setShowFiltersModal(true)}
+            className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-medium transition-all ${
+              hasActiveFilters
+                ? 'border-blue-500 text-blue-600 bg-blue-50'
+                : 'border-gray-200 text-gray-700 hover:bg-gray-50 bg-white'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {hasActiveFilters && <span className="w-2 h-2 bg-blue-500 rounded-full" />}
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setIsSortOpen(!isSortOpen)}
+              className="p-2.5 bg-white border border-gray-200 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all"
+            >
+              <ArrowUpDown className="w-4 h-4" />
+            </button>
+
+            {isSortOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsSortOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
+                  {[
+                    { id: 'popular', label: 'Popularity' },
+                    { id: 'newest', label: 'Newest' },
+                    { id: 'alphabetical', label: 'Name (A-Z)' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setSortOption(opt.id as typeof sortOption); setIsSortOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                        sortOption === opt.id ? 'bg-gray-50 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Row 3: Language/Accent dropdowns + YOUR ORIGINAL CATEGORIES */}
+        <div className="flex items-center gap-3 mt-4 flex-wrap pb-1">
+          {/* Language Dropdown */}
+          <div className="relative shrink-0">
+            <button
+              onClick={() => { setIsLanguageOpen(!isLanguageOpen); setIsAccentOpen(false); }}
+              className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm bg-white hover:bg-gray-50 transition-colors ${
+                appliedFilters.language ? 'border-blue-400 text-blue-600' : 'border-gray-200 text-gray-600'
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              {appliedFilters.language || 'Language'}
+              <ChevronDown className={`w-3 h-3 transition-transform ${isLanguageOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isLanguageOpen && (
+              <>
+                <div className="fixed inset-0 z-[9998]" onClick={() => setIsLanguageOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-[9999] py-1 max-h-60 overflow-y-auto">
+                  <button
+                    onClick={() => { setAppliedFilters(f => ({ ...f, language: undefined })); setIsLanguageOpen(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${!appliedFilters.language ? 'font-medium text-blue-600' : 'text-gray-600'}`}
+                  >
+                    All Languages
+                  </button>
+                  {availableLanguages.map(lang => (
+                    <button
+                      key={lang}
+                      onClick={() => { setAppliedFilters(f => ({ ...f, language: lang })); setIsLanguageOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${appliedFilters.language === lang ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+                    >
+                      {lang}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Accent Dropdown */}
+          <div className="relative shrink-0">
+            <button
+              onClick={() => { setIsAccentOpen(!isAccentOpen); setIsLanguageOpen(false); }}
+              className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm bg-white hover:bg-gray-50 transition-colors ${
+                appliedFilters.accent ? 'border-blue-400 text-blue-600' : 'border-gray-200 text-gray-500'
+              }`}
+            >
+              {appliedFilters.accent || 'Accent'}
+              <ChevronDown className={`w-3 h-3 transition-transform ${isAccentOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isAccentOpen && (
+              <>
+                <div className="fixed inset-0 z-[9998]" onClick={() => setIsAccentOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-[9999] py-1 max-h-60 overflow-y-auto">
+                  <button
+                    onClick={() => { setAppliedFilters(f => ({ ...f, accent: undefined })); setIsAccentOpen(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${!appliedFilters.accent ? 'font-medium text-blue-600' : 'text-gray-600'}`}
+                  >
+                    All Accents
+                  </button>
+                  {availableAccents.map(accent => (
+                    <button
+                      key={accent}
+                      onClick={() => { setAppliedFilters(f => ({ ...f, accent: accent })); setIsAccentOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${appliedFilters.accent === accent ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+                    >
+                      {accent}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="h-6 w-px bg-gray-200 shrink-0" />
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                selectedCategory === cat.id
+                  ? 'bg-gray-900 text-white'
+                  : 'border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white'
+              }`}
+            >
+              <cat.icon className="w-4 h-4" />
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-8">
+        {/* Trending Voices Section */}
+        {!searchQuery && !selectedCategory && activeTab === 'explore' && trendingVoices.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Trending voices</h2>
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {isLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 bg-gray-200 rounded-xl" />
+                      <div className="flex-1">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-gray-100 rounded w-1/2" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                trendingVoices.map((voice) => (
+                  <VoiceCard
+                    key={voice.id}
+                    voice={voice}
+                    isPlaying={currentVoice?.id === voice.id && isPlaying}
+                    isLoading={currentVoice?.id === voice.id && isLoadingPreview}
+                    isSaved={isVoiceSaved(voice.id)}
+                    onPlay={(e) => handlePlayVoice(voice, e)}
+                    onSave={(e) => handleToggleSave(voice, e)}
+                    onClick={() => playVoice(voice)}
+                  />
+                ))
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* YOUR ORIGINAL USE CASES with ElevenLabs-style cards */}
+        {!searchQuery && !selectedCategory && activeTab === 'explore' && (
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Handpicked for your use case</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => scrollUseCases('left')}
+                  className="p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-900 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => scrollUseCases('right')}
+                  className="p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-900 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div
+              ref={useCaseRef}
+              className="flex gap-4 overflow-x-auto pb-2"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {USE_CASES.map(useCase => (
+                <UseCaseCard
+                  key={useCase.id}
+                  label={useCase.label}
+                  icon={useCase.icon}
+                  bgColor={useCase.bgColor}
+                  onClick={() => handleUseCaseClick(useCase.searchTerm)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* All Voices Section */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900">
+              {searchQuery ? `Search results for "${searchQuery}"` :
+               selectedCategory ? `${selectedCategory} voices` :
+               activeTab === 'my-voices' ? 'My Saved Voices' : 'All voices'}
+            </h2>
+            <span className="text-sm text-gray-500">{filteredVoices.length} voices</span>
+          </div>
+
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 bg-gray-200 rounded-xl" />
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-gray-100 rounded w-1/2" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <div className="flex-1 h-9 bg-gray-100 rounded-lg" />
+                    <div className="w-9 h-9 bg-gray-100 rounded-lg" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : displayedVoices.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Star className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="font-semibold text-gray-900">No voices found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {activeTab === 'my-voices' ? 'Save voices to see them here' : 'Try adjusting your search or filters'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {displayedVoices.map((voice) => (
+                  <VoiceCard
+                    key={voice.id}
+                    voice={voice}
+                    isPlaying={currentVoice?.id === voice.id && isPlaying}
+                    isLoading={currentVoice?.id === voice.id && isLoadingPreview}
+                    isSaved={isVoiceSaved(voice.id)}
+                    onPlay={(e) => handlePlayVoice(voice, e)}
+                    onSave={(e) => handleToggleSave(voice, e)}
+                    onClick={() => playVoice(voice)}
+                  />
+                ))}
+              </div>
+
+              {displayedVoices.length < filteredVoices.length && (
+                <div className="mt-8 flex justify-center">
+                  <button
+                    onClick={() => setDisplayLimit(prev => prev + 24)}
+                    className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm text-sm"
+                  >
+                    Load More Voices ({filteredVoices.length - displayedVoices.length} remaining)
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+};
