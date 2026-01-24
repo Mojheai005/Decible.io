@@ -13,6 +13,7 @@ export interface GenerateSettings {
 interface GenerateParams {
     text: string
     voiceId: string
+    voiceName?: string
     settings?: GenerateSettings
 }
 
@@ -59,7 +60,8 @@ export function useGenerate(): UseGenerateResult {
                 },
                 body: JSON.stringify({
                     text: params.text,
-                    voice_id: params.voiceId, // Map voiceId to voice_id
+                    voice_id: params.voiceId,
+                    voice_name: params.voiceName || 'Unknown Voice',
                     voice_settings: {
                         stability: params.settings?.stability ?? 0.5,
                         similarity_boost: params.settings?.similarity ?? 0.75,
@@ -70,12 +72,17 @@ export function useGenerate(): UseGenerateResult {
                 }),
             })
 
-            if (!response.ok) {
+            if (!response.ok && response.status !== 202) {
                 const errorData = await response.json().catch(() => ({}))
                 throw new Error(errorData.error || `Generation failed: ${response.status}`)
             }
 
-            const data: GenerationResult = await response.json()
+            const data = await response.json() as GenerationResult & { isPending?: boolean }
+
+            // Handle pending/timeout response — generation still processing server-side
+            if (response.status === 202 || data.isPending) {
+                throw new Error('Generation is taking longer than expected. It may still complete — check your history shortly.')
+            }
 
             // Map flat audioUrl to the nested structure TextToSpeech expects to avoid breaking changes there
             // OR we fix usage in TextToSpeech. Let's do both for safety.

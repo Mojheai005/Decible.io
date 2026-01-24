@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib/rate-limiter';
 
+// Extend Vercel serverless function timeout (max 300s on Pro, 60s on Hobby)
+export const maxDuration = 300;
+
 const DUBVOICE_BASE_URL = API_CONFIG.DUBVOICE_BASE_URL;
 
 // Get authenticated user
@@ -16,11 +19,11 @@ async function getAuthenticatedUser() {
 }
 
 // Get user profile with credits
-async function getUserProfile(userId: string): Promise<{ credits_remaining: number; subscription_tier: string } | null> {
+async function getUserProfile(userId: string): Promise<{ credits_remaining: number; subscription_tier: string; credits_used_this_month: number } | null> {
     const admin = getAdminClient();
     const { data, error } = await admin
         .from('user_profiles')
-        .select('credits_remaining, subscription_tier')
+        .select('credits_remaining, subscription_tier, credits_used_this_month')
         .eq('id', userId)
         .single();
 
@@ -28,32 +31,98 @@ async function getUserProfile(userId: string): Promise<{ credits_remaining: numb
         console.error('Error fetching user profile:', error);
         return null;
     }
-    return data as { credits_remaining: number; subscription_tier: string };
+    return data as { credits_remaining: number; subscription_tier: string; credits_used_this_month: number };
 }
 
 // Deduct credits and log transaction
 async function useCredits(userId: string, amount: number, description: string, referenceId?: string) {
     const admin = getAdminClient();
 
-    const { data, error } = await admin.rpc('use_credits', {
-        p_user_id: userId,
-        p_amount: amount,
-        p_description: description,
-        p_reference_id: referenceId || null,
-    });
+    // Get current balance and usage
+    const { data: profile, error: fetchError } = await admin
+        .from('user_profiles')
+        .select('credits_remaining, credits_used_this_month')
+        .eq('id', userId)
+        .single();
 
-    if (error) {
-        console.error('Error deducting credits:', error);
-        return { success: false, error: error.message };
+    if (fetchError || !profile) {
+        console.error('Error fetching profile for credit deduction:', fetchError);
+        return { success: false, error: fetchError?.message || 'Profile not found' };
     }
 
-    // The RPC returns a table, so data is an array
-    const result = Array.isArray(data) ? data[0] : data;
-    return {
-        success: result?.success ?? false,
-        newBalance: result?.new_balance ?? 0,
-        error: result?.error_message,
-    };
+    const newBalance = profile.credits_remaining - amount;
+    if (newBalance < 0) {
+        return { success: false, error: 'Insufficient credits', newBalance: profile.credits_remaining };
+    }
+
+    // Update credits_remaining and credits_used_this_month
+    const { error: updateError } = await admin
+        .from('user_profiles')
+        .update({
+            credits_remaining: newBalance,
+            credits_used_this_month: (profile.credits_used_this_month || 0) + amount,
+        })
+        .eq('id', userId);
+
+    if (updateError) {
+        console.error('Error updating credits:', updateError);
+        return { success: false, error: updateError.message };
+    }
+
+    // Log credit transaction (non-blocking, won't fail the request if table doesn't exist)
+    const { error: txError } = await admin.from('credit_transactions').insert({
+        user_id: userId,
+        amount: -amount,
+        type: 'usage',
+        description,
+        reference_id: referenceId || null,
+        balance_after: newBalance,
+    });
+    if (txError) {
+        console.error('Error logging credit transaction:', txError.message);
+    }
+
+    return { success: true, newBalance };
+}
+
+// Store audio in Supabase Storage and return public URL
+async function storeAudioInBucket(userId: string, taskId: string, audioUrl: string): Promise<string | null> {
+    try {
+        const admin = getAdminClient();
+
+        // Download audio from DubVoice URL
+        const audioResponse = await fetch(audioUrl);
+        if (!audioResponse.ok) {
+            console.error('Failed to download audio from DubVoice:', audioResponse.status);
+            return null;
+        }
+
+        const audioBuffer = await audioResponse.arrayBuffer();
+        const filePath = `${userId}/${taskId}.mp3`;
+
+        // Upload to Supabase Storage bucket "audio-generations"
+        const { error: uploadError } = await admin.storage
+            .from('audio-generations')
+            .upload(filePath, audioBuffer, {
+                contentType: 'audio/mpeg',
+                upsert: true,
+            });
+
+        if (uploadError) {
+            console.error('Failed to upload audio to storage:', uploadError.message);
+            return null;
+        }
+
+        // Get public URL
+        const { data: urlData } = admin.storage
+            .from('audio-generations')
+            .getPublicUrl(filePath);
+
+        return urlData?.publicUrl || null;
+    } catch (err) {
+        console.error('Error storing audio in bucket:', err);
+        return null;
+    }
 }
 
 // Save generation to history
@@ -225,16 +294,19 @@ export async function POST(request: NextRequest) {
 
                     if (!creditResult.success) {
                         console.error('Failed to deduct credits:', creditResult.error);
-                        // Still return the audio since it was generated
                     }
 
-                    // 10. Save to history
+                    // 10. Store audio in Supabase Storage for persistent access
+                    const storedAudioUrl = await storeAudioInBucket(userId, taskId, statusData.result);
+                    const finalAudioUrl = storedAudioUrl || statusData.result;
+
+                    // 11. Save to history with the persistent URL
                     await saveToHistory(
                         userId,
                         text,
                         voice_id,
                         voice_name || 'Unknown Voice',
-                        statusData.result,
+                        finalAudioUrl,
                         charactersUsed,
                         creditsNeeded,
                         voice_settings || {}
@@ -242,7 +314,7 @@ export async function POST(request: NextRequest) {
 
                     return NextResponse.json({
                         success: true,
-                        audioUrl: statusData.result,
+                        audioUrl: finalAudioUrl,
                         taskId: taskId,
                         usage: {
                             characters: charactersUsed,

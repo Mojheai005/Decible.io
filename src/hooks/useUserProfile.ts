@@ -53,8 +53,8 @@ export function useUserProfile(): UseUserProfileResult {
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const fetchProfile = useCallback(async () => {
-        setIsLoading(true)
+    const fetchProfile = useCallback(async (showLoading = true) => {
+        if (showLoading) setIsLoading(true)
         setError(null)
 
         try {
@@ -76,7 +76,13 @@ export function useUserProfile(): UseUserProfileResult {
     }, [])
 
     useEffect(() => {
-        fetchProfile()
+        fetchProfile(true)
+
+        // Listen for credit updates from other components (e.g., after TTS generation)
+        // Use silent refetch (no loading spinner) so sidebar doesn't flash
+        const handleCreditsUpdated = () => { fetchProfile(false) }
+        window.addEventListener('credits-updated', handleCreditsUpdated)
+        return () => { window.removeEventListener('credits-updated', handleCreditsUpdated) }
     }, [fetchProfile])
 
     const useCredits = useCallback(async (amount: number, type?: string): Promise<boolean> => {

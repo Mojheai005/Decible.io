@@ -50,10 +50,24 @@ const saveHistory = (history: HistoryItem[]) => {
     }
 };
 
+// Persist TTS text in sessionStorage so it survives view switches
+const TTS_TEXT_KEY = 'tts_draft_text';
+const loadDraftText = () => {
+    if (typeof window === 'undefined') return '';
+    return sessionStorage.getItem(TTS_TEXT_KEY) || '';
+};
+
 export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
-    const [text, setText] = useState('');
+    const [text, setText] = useState(loadDraftText);
     const [isGenerating, setIsGenerating] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Persist text to sessionStorage on change
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            sessionStorage.setItem(TTS_TEXT_KEY, text);
+        }
+    }, [text]);
 
     // Right Sidebar Tabs
     const [activeTab, setActiveTab] = useState<'settings' | 'history'>('settings');
@@ -184,8 +198,9 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
 
         try {
             const result = await generate({
-                text: validation.sanitized, // Use sanitized text
+                text: validation.sanitized,
                 voiceId: currentVoice.id,
+                voiceName: currentVoice.name,
                 settings: {
                     stability: stability / 100,
                     similarity: similarity / 100,
@@ -217,11 +232,15 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                 }
 
                 showToast('Audio generated successfully!', 'success');
+
+                // Trigger profile refetch across all components (sidebar, etc.)
+                window.dispatchEvent(new Event('credits-updated'));
             } else {
                 showToast('Generation failed. Please try again.', 'error');
             }
         } catch (err) {
-            showToast('Generation failed. Please try again.', 'error');
+            const msg = err instanceof Error ? err.message : 'Generation failed. Please try again.';
+            showToast(msg, 'error');
         } finally {
             setIsGenerating(false);
         }
@@ -323,13 +342,6 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
 
     return (
         <div className="flex h-full bg-white overflow-hidden relative">
-            {/* Loading state while voices are being fetched */}
-            {voicesLoading && (
-                <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-50">
-                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                    <span className="ml-2 text-gray-500">Loading voices...</span>
-                </div>
-            )}
 
             <div className="flex-1 flex w-full h-full">
                 {/* LEFT: Main Content Area (Editor) */}
@@ -412,7 +424,10 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                             <div className="p-8 space-y-8">
                                 {/* Voice Selector */}
                                 <div className="space-y-3">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Voice</label>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Voice</label>
+                                        {voicesLoading && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                                    </div>
                                     <VoiceDropdown
                                         currentVoiceId={currentVoice?.id || ''}
                                         currentVoice={currentVoice}

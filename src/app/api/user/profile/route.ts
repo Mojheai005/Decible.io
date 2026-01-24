@@ -53,7 +53,32 @@ export async function GET() {
         );
         const totalCredits = currentPlan?.credits || 5000;
 
-        // Return real profile + plans from pricing.ts
+        // Fetch real credit transactions (last 50)
+        let transactions: Array<{ id: string; date: string; type: string; amount: number; status: string; description?: string }> = [];
+        try {
+            const { data: txData } = await admin
+                .from('credit_transactions')
+                .select('id, created_at, type, amount, description, balance_after')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (txData && txData.length > 0) {
+                transactions = txData.map((tx: Record<string, unknown>) => ({
+                    id: tx.id as string,
+                    date: tx.created_at as string,
+                    type: tx.type as string,
+                    amount: tx.amount as number,
+                    status: 'completed',
+                    description: (tx.description as string) || undefined,
+                }));
+            }
+        } catch (txErr) {
+            // Table might not exist yet — that's OK
+            console.error('Error fetching transactions:', txErr);
+        }
+
+        // Return real profile + transactions + plans
         return NextResponse.json({
             profile: {
                 id: (userProfile as Record<string, unknown>).id,
@@ -66,12 +91,12 @@ export async function GET() {
                 voiceSlots: currentPlan?.voiceSlots || 5,
                 resetDate: (userProfile as Record<string, unknown>).credits_reset_date,
             },
-            transactions: [],
+            transactions,
             plans: SUBSCRIPTION_PLANS.map(p => ({
                 id: p.id,
                 name: p.name,
                 credits: p.credits,
-                price: p.priceMonthly / 100, // paise → rupees
+                price: p.priceMonthly / 100,
                 voiceSlots: p.voiceSlots,
             })),
         });
