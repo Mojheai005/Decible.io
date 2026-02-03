@@ -21,7 +21,6 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
 
 // Routes that require authentication
 const PROTECTED_ROUTES = [
-    '/dashboard',
     '/generate',
     '/voices',
     '/history',
@@ -36,8 +35,9 @@ export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl
 
     // Skip auth check for auth callback - it handles its own auth
+    // But still pass request through properly so cookies are forwarded
     if (pathname.startsWith('/auth/callback')) {
-        return NextResponse.next()
+        return addSecurityHeaders(NextResponse.next({ request }))
     }
 
     let response = NextResponse.next({

@@ -78,8 +78,8 @@ function fromMinimal(m: MinimalVoice): Voice {
  */
 function clearOldCache(): void {
     try {
-        localStorage.removeItem('decibal_voices_cache')
-        localStorage.removeItem('decibal_voices_cache_v2')
+        localStorage.removeItem('decible_voices_cache')
+        localStorage.removeItem('decible_voices_cache_v2')
     } catch {
         // Ignore
     }

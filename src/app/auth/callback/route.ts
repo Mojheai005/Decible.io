@@ -1,60 +1,82 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url)
     const code = searchParams.get('code')
-    const next = searchParams.get('next') ?? '/dashboard'
+    const next = searchParams.get('next') ?? '/'
+
+    // Use forwarded host or origin (Vercel deployment URLs vs alias)
+    const forwardedHost = request.headers.get('x-forwarded-host')
+    const baseUrl = forwardedHost ? `https://${forwardedHost}` : origin
 
     if (code) {
-        const supabase = await createClient()
+        const cookieStore = await cookies()
+
+        const supabase = createServerClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            {
+                cookies: {
+                    getAll() {
+                        return cookieStore.getAll()
+                    },
+                    setAll(cookiesToSet) {
+                        try {
+                            cookiesToSet.forEach(({ name, value, options }) => {
+                                cookieStore.set(name, value, options)
+                            })
+                        } catch (error) {
+                            console.error('Cookie set error:', error)
+                        }
+                    },
+                },
+            }
+        )
+
         const { error } = await supabase.auth.exchangeCodeForSession(code)
 
-        if (!error) {
-            // Ensure user profile exists in user_profiles table
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-                try {
-                    const admin = getAdminClient()
-                    const { data: existing } = await admin
-                        .from('user_profiles')
-                        .select('id')
-                        .eq('id', user.id)
-                        .single()
+        if (error) {
+            console.error('Auth callback exchangeCodeForSession error:', JSON.stringify({ message: error.message, status: error.status, name: error.name }))
+            return NextResponse.redirect(`${baseUrl}/login?error=auth_failed&reason=${encodeURIComponent(error.message)}`)
+        }
 
-                    if (!existing) {
-                        // First login — create profile with free tier defaults
-                        await admin.from('user_profiles').insert({
-                            id: user.id,
-                            email: user.email,
-                            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-                            subscription_tier: 'free',
-                            credits_remaining: 5000,
-                            credits_used_this_month: 0,
-                            credits_reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                        })
+        // Ensure user profile exists in user_profiles table
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+            try {
+                const admin = getAdminClient()
+                const { data: existing } = await admin
+                    .from('user_profiles')
+                    .select('id')
+                    .eq('id', user.id)
+                    .single()
+
+                if (!existing) {
+                    const { error: insertError } = await admin.from('user_profiles').insert({
+                        id: user.id,
+                        email: user.email,
+                        name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+                        subscription_tier: 'free',
+                        credits_remaining: 5000,
+                        credits_used_this_month: 0,
+                        credits_reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                    })
+                    if (insertError) {
+                        console.error('Failed to insert user_profiles:', JSON.stringify(insertError))
                     }
-                } catch (profileError) {
-                    // Don't block login if profile creation fails — it will be created on next profile fetch
-                    console.error('Failed to create user profile on callback:', profileError)
                 }
-            }
-
-            // Successful authentication — redirect to destination
-            const forwardedHost = request.headers.get('x-forwarded-host')
-            const isLocalEnv = process.env.NODE_ENV === 'development'
-
-            if (isLocalEnv) {
-                return NextResponse.redirect(`${origin}${next}`)
-            } else if (forwardedHost) {
-                return NextResponse.redirect(`https://${forwardedHost}${next}`)
-            } else {
-                return NextResponse.redirect(`${origin}${next}`)
+            } catch (profileError) {
+                console.error('Failed to create user profile on callback:', profileError)
             }
         }
+
+        // Successful authentication — redirect to destination
+        return NextResponse.redirect(`${baseUrl}${next}`)
     }
 
-    // Auth error - redirect to login with error
-    return NextResponse.redirect(`${origin}/login?error=auth_failed`)
+    // No code provided
+    return NextResponse.redirect(`${baseUrl}/login?error=auth_failed`)
 }

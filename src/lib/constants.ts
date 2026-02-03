@@ -2,12 +2,10 @@
 // APPLICATION CONSTANTS
 // ===========================================
 
-// DubVoice API Configuration
+// Kie.ai TTS API Configuration (ElevenLabs v2.5)
 export const API_CONFIG = {
-    DUBVOICE_BASE_URL: 'https://www.dubvoice.ai/api/v1',
-    MAX_POLL_ATTEMPTS: 15,
-    POLL_INTERVAL_MS: 2000,
-    REQUEST_TIMEOUT_MS: 30000,
+    KIEAI_BASE_URL: 'https://api.kie.ai',
+    REQUEST_TIMEOUT_MS: 60000, // 60 seconds - direct response, no polling needed
 } as const
 
 // Rate Limiting
@@ -28,8 +26,8 @@ export const RATE_LIMITS = {
 export const VOICE_SETTINGS = {
     // Speed - Controls playback rate
     SPEED: {
-        MIN: 0.5,      // Slower (50% speed)
-        MAX: 2.0,      // Faster (200% speed)
+        MIN: 0.7,      // Minimum speed (per DubVoice API)
+        MAX: 1.2,      // Maximum speed (per DubVoice API)
         DEFAULT: 1.0,  // Normal speed
         STEP: 0.01,
     },

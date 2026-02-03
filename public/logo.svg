@@ -1,0 +1,14 @@
+<svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Vertical bar of crosshair -->
+  <rect x="18" y="10" width="8" height="80" fill="currentColor"/>
+  <!-- Horizontal bars of crosshair -->
+  <rect x="10" y="32" width="16" height="8" fill="currentColor"/>
+  <rect x="10" y="60" width="16" height="8" fill="currentColor"/>
+  <!-- Right horizontal bars -->
+  <rect x="74" y="32" width="16" height="8" fill="currentColor"/>
+  <rect x="74" y="60" width="16" height="8" fill="currentColor"/>
+  <!-- D shape - outer arc -->
+  <path d="M26 20 L26 80 L50 80 C72 80 86 65 86 50 C86 35 72 20 50 20 L26 20 Z M34 28 L50 28 C67 28 78 37 78 50 C78 63 67 72 50 72 L34 72 L34 28 Z" fill="currentColor"/>
+  <!-- Red recording dot -->
+  <circle cx="56" cy="50" r="12" fill="#EF4444"/>
+</svg>

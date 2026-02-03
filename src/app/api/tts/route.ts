@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getNextApiKey, getCurrentApiKey } from '@/lib/dubvoice';
-import { API_CONFIG, CREDITS_CONFIG } from '@/lib/constants';
+import { generateTTS } from '@/lib/kieai';
+import { getVoiceById } from '@/lib/voices-data';
+import { CREDITS_CONFIG } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib/rate-limiter';
 
 // Extend Vercel serverless function timeout (max 300s on Pro, 60s on Hobby)
-export const maxDuration = 300;
-
-const DUBVOICE_BASE_URL = API_CONFIG.DUBVOICE_BASE_URL;
+export const maxDuration = 60;
 
 // Get authenticated user
 async function getAuthenticatedUser() {
@@ -69,14 +68,16 @@ async function useCredits(userId: string, amount: number, description: string, r
         return { success: false, error: updateError.message };
     }
 
-    // Log credit transaction (non-blocking, won't fail the request if table doesn't exist)
+    // Log credit transaction
     const { error: txError } = await admin.from('credit_transactions').insert({
         user_id: userId,
         amount: -amount,
-        type: 'usage',
+        balance_before: profile.credits_remaining,
+        balance_after: newBalance,
+        type: 'generation',
         description,
         reference_id: referenceId || null,
-        balance_after: newBalance,
+        reference_type: 'generation',
     });
     if (txError) {
         console.error('Error logging credit transaction:', txError.message);
@@ -86,19 +87,10 @@ async function useCredits(userId: string, amount: number, description: string, r
 }
 
 // Store audio in Supabase Storage and return public URL
-async function storeAudioInBucket(userId: string, taskId: string, audioUrl: string): Promise<string | null> {
+async function storeAudioInBucket(userId: string, generationId: string, audioBuffer: ArrayBuffer): Promise<string | null> {
     try {
         const admin = getAdminClient();
-
-        // Download audio from DubVoice URL
-        const audioResponse = await fetch(audioUrl);
-        if (!audioResponse.ok) {
-            console.error('Failed to download audio from DubVoice:', audioResponse.status);
-            return null;
-        }
-
-        const audioBuffer = await audioResponse.arrayBuffer();
-        const filePath = `${userId}/${taskId}.mp3`;
+        const filePath = `${userId}/${generationId}.mp3`;
 
         // Upload to Supabase Storage bucket "audio-generations"
         const { error: uploadError } = await admin.storage
@@ -224,125 +216,96 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 7. Submit Generation Task to DubVoice
-        const apiKey = getNextApiKey();
+        // 7. Get the voice name to send to Kie.ai API
+        // voice_id from our system maps to voice name for Kie.ai
+        const voiceData = getVoiceById(voice_id);
+        const voiceNameForApi = voiceData?.voiceName || voice_name || voice_id;
 
-
-        const initResponse = await fetch(`${DUBVOICE_BASE_URL}/tts`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                text,
-                voice_id,
-                model_id: 'eleven_multilingual_v2',
-                voice_settings: voice_settings || {
-                    stability: 0.5,
-                    similarity_boost: 0.75,
-                    speed: 1.0,
-                    style: 0,
-                    use_speaker_boost: true
-                }
-            })
+        // 8. Generate TTS using Kie.ai (direct response, no polling!)
+        const audioBuffer = await generateTTS({
+            text,
+            voice: voiceNameForApi,
+            voice_settings: voice_settings ? {
+                stability: voice_settings.stability ?? 0.5,
+                similarity_boost: voice_settings.similarity_boost ?? 0.75,
+                speed: voice_settings.speed ?? 1.0,
+                style: voice_settings.style ?? 0,
+            } : undefined,
         });
 
-        if (!initResponse.ok) {
-            const errorText = await initResponse.text();
-            console.error('DubVoice TTS Init Failed:', errorText);
-            return NextResponse.json(
-                { error: 'TTS Generation Failed', message: 'Failed to start voice generation' },
-                { status: initResponse.status }
-            );
-        }
+        // 9. Generate a unique ID for this generation
+        const generationId = `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-        const initData = await initResponse.json();
-        const taskId = initData.task_id;
+        // 10. Store audio in Supabase Storage
+        const storedAudioUrl = await storeAudioInBucket(userId, generationId, audioBuffer);
 
-        if (!taskId) {
+        if (!storedAudioUrl) {
+            // If storage fails, create a blob URL as fallback (for immediate playback)
+            // Note: This won't persist, but at least the user gets their audio
+            console.error('Failed to store audio, returning error');
             return NextResponse.json(
-                { error: 'No task_id returned from API' },
+                { error: 'Failed to store generated audio' },
                 { status: 500 }
             );
         }
 
-        // 8. Poll for Completion
-        const pollKey = getCurrentApiKey();
-        const maxAttempts = API_CONFIG.MAX_POLL_ATTEMPTS;
-        const delayMs = API_CONFIG.POLL_INTERVAL_MS;
+        // 11. Deduct credits
+        const creditResult = await useCredits(
+            userId,
+            creditsNeeded,
+            `TTS Generation: ${charactersUsed} characters`,
+            generationId
+        );
 
-        for (let i = 0; i < maxAttempts; i++) {
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-
-            const statusResponse = await fetch(`${DUBVOICE_BASE_URL}/tts/${taskId}`, {
-                headers: { 'Authorization': `Bearer ${pollKey}` },
-                cache: 'no-store'
-            });
-
-            if (statusResponse.ok) {
-                const statusData = await statusResponse.json();
-
-                if (statusData.status === 'completed') {
-                    // 9. SUCCESS - Deduct credits
-                    const creditResult = await useCredits(
-                        userId,
-                        creditsNeeded,
-                        `TTS Generation: ${charactersUsed} characters`,
-                        taskId
-                    );
-
-                    if (!creditResult.success) {
-                        console.error('Failed to deduct credits:', creditResult.error);
-                    }
-
-                    // 10. Store audio in Supabase Storage for persistent access
-                    const storedAudioUrl = await storeAudioInBucket(userId, taskId, statusData.result);
-                    const finalAudioUrl = storedAudioUrl || statusData.result;
-
-                    // 11. Save to history with the persistent URL
-                    await saveToHistory(
-                        userId,
-                        text,
-                        voice_id,
-                        voice_name || 'Unknown Voice',
-                        finalAudioUrl,
-                        charactersUsed,
-                        creditsNeeded,
-                        voice_settings || {}
-                    );
-
-                    return NextResponse.json({
-                        success: true,
-                        audioUrl: finalAudioUrl,
-                        taskId: taskId,
-                        usage: {
-                            characters: charactersUsed,
-                            creditsUsed: creditsNeeded,
-                            creditsRemaining: creditResult.newBalance ?? (profile.credits_remaining - creditsNeeded),
-                        }
-                    });
-                } else if (statusData.status === 'failed') {
-                    return NextResponse.json(
-                        { error: 'Generation Failed', message: statusData.error || 'Voice generation failed' },
-                        { status: 500 }
-                    );
-                }
-            }
+        if (!creditResult.success) {
+            console.error('Failed to deduct credits:', creditResult.error);
         }
 
-        // Timeout reached
+        // 12. Save to history
+        await saveToHistory(
+            userId,
+            text,
+            voice_id,
+            voice_name || voiceNameForApi,
+            storedAudioUrl,
+            charactersUsed,
+            creditsNeeded,
+            voice_settings || {}
+        );
+
+        // 13. Return success response
         return NextResponse.json({
-            error: 'Generation Timed Out',
-            taskId: taskId,
-            isPending: true,
-            message: 'Generation is taking longer than expected. Please try again.',
-        }, { status: 202 });
+            success: true,
+            audioUrl: storedAudioUrl,
+            taskId: generationId,
+            usage: {
+                characters: charactersUsed,
+                creditsUsed: creditsNeeded,
+                creditsRemaining: creditResult.newBalance ?? (profile.credits_remaining - creditsNeeded),
+            }
+        });
 
     } catch (error) {
         console.error('TTS API Error:', error);
+
+        // Handle specific error types
+        if (error instanceof Error) {
+            if (error.message.includes('Rate limit')) {
+                return NextResponse.json(
+                    { error: 'Rate limit exceeded', message: error.message },
+                    { status: 429 }
+                );
+            }
+            if (error.message.includes('KIEAI_API_KEY')) {
+                return NextResponse.json(
+                    { error: 'API configuration error', message: 'TTS service not configured' },
+                    { status: 500 }
+                );
+            }
+        }
+
         return NextResponse.json(
-            { error: 'Internal Server Error' },
+            { error: 'Internal Server Error', message: 'Failed to generate audio' },
             { status: 500 }
         );
     }

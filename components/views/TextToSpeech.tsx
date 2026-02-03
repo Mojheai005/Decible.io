@@ -442,7 +442,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                                     <div className="w-full p-3.5 border border-gray-200 rounded-2xl flex items-center justify-between hover:border-gray-300 hover:shadow-sm cursor-pointer transition-all bg-white group">
                                         <div className="flex items-center gap-3">
                                             <div className="px-2 py-1 rounded bg-gray-100 border border-gray-200 text-[10px] font-bold group-hover:bg-gray-200 transition-colors">V2</div>
-                                            <span className="text-sm font-semibold text-gray-900">Decibal Multilingual V1</span>
+                                            <span className="text-sm font-semibold text-gray-900">Decible Multilingual V1</span>
                                         </div>
                                         <ChevronRight className="w-4 h-4 text-gray-400" />
                                     </div>
@@ -454,8 +454,8 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate }) => {
                                         label="Speed"
                                         value={speed}
                                         onChange={setSpeed}
-                                        min={0.5}
-                                        max={2.0}
+                                        min={0.7}
+                                        max={1.2}
                                         step={0.01}
                                         leftLabel="Slower"
                                         rightLabel="Faster"

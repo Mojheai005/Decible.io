@@ -1,187 +1,216 @@
--- ===========================================
--- NMM VO APP - Supabase Database Schema
--- Run this in your Supabase SQL Editor
--- ===========================================
+-- ============================================================
+-- DECIBLE.IO - COMPLETE SUPABASE SCHEMA
+-- Clean, minimal, production-ready
+-- ============================================================
 
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- ============================================================
+-- STEP 1: DROP ALL EXISTING TABLES (Clean Slate)
+-- ============================================================
 
--- ===========================================
--- USER PROFILES TABLE
--- ===========================================
-CREATE TABLE IF NOT EXISTS user_profiles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email TEXT UNIQUE NOT NULL,
+DROP TABLE IF EXISTS public.credit_transactions CASCADE;
+DROP TABLE IF EXISTS public.generation_history CASCADE;
+DROP TABLE IF EXISTS public.saved_voices CASCADE;
+DROP TABLE IF EXISTS public.payment_orders CASCADE;
+DROP TABLE IF EXISTS public.rate_limits CASCADE;
+DROP TABLE IF EXISTS public.user_profiles CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+DROP TABLE IF EXISTS public.cloned_voices CASCADE;
+
+-- ============================================================
+-- STEP 2: CREATE TABLES
+-- ============================================================
+
+-- 1. USER PROFILES
+CREATE TABLE public.user_profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
     name TEXT,
     avatar_url TEXT,
-    credits_remaining INTEGER DEFAULT 10000,
-    subscription_tier TEXT DEFAULT 'free' CHECK (subscription_tier IN ('free', 'starter', 'pro', 'enterprise')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+    subscription_tier TEXT NOT NULL DEFAULT 'free',
+    credits_remaining INTEGER NOT NULL DEFAULT 5000,
+    credits_used_this_month INTEGER NOT NULL DEFAULT 0,
+    credits_reset_date TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days'),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Index for email lookups
-CREATE INDEX IF NOT EXISTS idx_user_profiles_email ON user_profiles(email);
-
--- ===========================================
--- SAVED VOICES TABLE (My Voices)
--- ===========================================
-CREATE TABLE IF NOT EXISTS saved_voices (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+-- 2. SAVED VOICES
+CREATE TABLE public.saved_voices (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     voice_id TEXT NOT NULL,
     voice_name TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
-
-    -- Prevent duplicate voices per user
+    voice_category TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, voice_id)
 );
 
--- Index for user lookups
-CREATE INDEX IF NOT EXISTS idx_saved_voices_user_id ON saved_voices(user_id);
-
--- ===========================================
--- GENERATION HISTORY TABLE
--- ===========================================
-CREATE TABLE IF NOT EXISTS generation_history (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
-    text TEXT NOT NULL,
+-- 3. GENERATION HISTORY
+CREATE TABLE public.generation_history (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    text TEXT,
     voice_id TEXT NOT NULL,
-    voice_name TEXT NOT NULL,
-    audio_url TEXT,
-    duration_seconds FLOAT,
-    characters_used INTEGER NOT NULL,
+    voice_name TEXT,
+    audio_url TEXT NOT NULL,
+    characters_used INTEGER NOT NULL DEFAULT 0,
+    credits_used INTEGER NOT NULL DEFAULT 0,
     settings JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+    status TEXT DEFAULT 'completed',
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Index for user lookups with timestamp
-CREATE INDEX IF NOT EXISTS idx_generation_history_user_id ON generation_history(user_id, created_at DESC);
-
--- ===========================================
--- VOICE CACHE TABLE (Server-side caching)
--- ===========================================
-CREATE TABLE IF NOT EXISTS voice_cache (
-    id TEXT PRIMARY KEY DEFAULT 'main_cache',
-    voices_data JSONB NOT NULL DEFAULT '[]',
-    total_count INTEGER DEFAULT 0,
-    categories JSONB DEFAULT '[]',
-    languages JSONB DEFAULT '[]',
-    accents JSONB DEFAULT '[]',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+-- 4. CREDIT TRANSACTIONS
+CREATE TABLE public.credit_transactions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    amount INTEGER NOT NULL,
+    balance_before INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT 'generation',
+    description TEXT,
+    reference_id TEXT,
+    reference_type TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ===========================================
--- STORED PROCEDURES
--- ===========================================
+-- 5. PAYMENT ORDERS
+CREATE TABLE public.payment_orders (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    razorpay_order_id TEXT NOT NULL UNIQUE,
+    razorpay_payment_id TEXT,
+    razorpay_signature TEXT,
+    order_type TEXT NOT NULL,
+    plan_id TEXT,
+    topup_package_id TEXT,
+    amount INTEGER NOT NULL,
+    currency TEXT DEFAULT 'INR',
+    credits INTEGER NOT NULL,
+    status TEXT DEFAULT 'created',
+    error_code TEXT,
+    error_description TEXT,
+    credits_added BOOLEAN DEFAULT FALSE,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Deduct credits from user
-CREATE OR REPLACE FUNCTION deduct_credits(user_id UUID, amount INTEGER)
-RETURNS VOID AS $$
-BEGIN
-    UPDATE user_profiles
-    SET credits_remaining = GREATEST(0, credits_remaining - amount),
-        updated_at = TIMEZONE('utc', NOW())
-    WHERE id = user_id;
-END;
-$$ LANGUAGE plpgsql;
+-- 6. RATE LIMITS
+CREATE TABLE public.rate_limits (
+    key TEXT PRIMARY KEY,
+    count INTEGER DEFAULT 0,
+    last_reset TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Get slot limit for a tier
-CREATE OR REPLACE FUNCTION get_slot_limit(tier TEXT)
-RETURNS INTEGER AS $$
-BEGIN
-    RETURN CASE tier
-        WHEN 'free' THEN 5
-        WHEN 'starter' THEN 10
-        WHEN 'pro' THEN 20
-        WHEN 'enterprise' THEN 50
-        ELSE 5
-    END;
-END;
-$$ LANGUAGE plpgsql;
+-- ============================================================
+-- STEP 3: CREATE INDEXES
+-- ============================================================
 
--- Check if user can add a voice
-CREATE OR REPLACE FUNCTION can_add_voice(p_user_id UUID)
-RETURNS BOOLEAN AS $$
-DECLARE
-    current_count INTEGER;
-    slot_limit INTEGER;
-    user_tier TEXT;
-BEGIN
-    -- Get user tier
-    SELECT subscription_tier INTO user_tier FROM user_profiles WHERE id = p_user_id;
+CREATE INDEX idx_user_profiles_email ON public.user_profiles(email);
+CREATE INDEX idx_saved_voices_user ON public.saved_voices(user_id);
+CREATE INDEX idx_generation_history_user ON public.generation_history(user_id, created_at DESC);
+CREATE INDEX idx_credit_transactions_user ON public.credit_transactions(user_id, created_at DESC);
+CREATE INDEX idx_payment_orders_user ON public.payment_orders(user_id);
+CREATE INDEX idx_payment_orders_razorpay ON public.payment_orders(razorpay_order_id);
+CREATE INDEX idx_rate_limits_expires ON public.rate_limits(expires_at);
 
-    -- Get slot limit for tier
-    slot_limit := get_slot_limit(user_tier);
+-- ============================================================
+-- STEP 4: ENABLE ROW LEVEL SECURITY
+-- ============================================================
 
-    -- Count current saved voices
-    SELECT COUNT(*) INTO current_count FROM saved_voices WHERE user_id = p_user_id;
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.saved_voices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.generation_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.credit_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
 
-    RETURN current_count < slot_limit;
-END;
-$$ LANGUAGE plpgsql;
+-- ============================================================
+-- STEP 5: CREATE RLS POLICIES
+-- ============================================================
 
--- ===========================================
--- ROW LEVEL SECURITY (RLS)
--- ===========================================
-
--- Enable RLS on all tables
-ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE saved_voices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE generation_history ENABLE ROW LEVEL SECURITY;
-
--- Policies for user_profiles
-CREATE POLICY "Users can view own profile" ON user_profiles
+-- USER PROFILES
+CREATE POLICY "Users can view own profile" ON public.user_profiles
     FOR SELECT USING (auth.uid() = id);
-
-CREATE POLICY "Users can update own profile" ON user_profiles
+CREATE POLICY "Users can update own profile" ON public.user_profiles
     FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Service can insert profiles" ON public.user_profiles
+    FOR INSERT WITH CHECK (true);
 
--- Policies for saved_voices
-CREATE POLICY "Users can view own saved voices" ON saved_voices
+-- SAVED VOICES
+CREATE POLICY "Users can view own saved voices" ON public.saved_voices
     FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own saved voices" ON saved_voices
+CREATE POLICY "Users can insert own saved voices" ON public.saved_voices
     FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own saved voices" ON saved_voices
+CREATE POLICY "Users can delete own saved voices" ON public.saved_voices
     FOR DELETE USING (auth.uid() = user_id);
 
--- Policies for generation_history
-CREATE POLICY "Users can view own history" ON generation_history
+-- GENERATION HISTORY
+CREATE POLICY "Users can view own history" ON public.generation_history
     FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Service can insert history" ON public.generation_history
+    FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Users can insert own history" ON generation_history
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREDIT TRANSACTIONS
+CREATE POLICY "Users can view own transactions" ON public.credit_transactions
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Service can insert transactions" ON public.credit_transactions
+    FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Users can delete own history" ON generation_history
-    FOR DELETE USING (auth.uid() = user_id);
+-- PAYMENT ORDERS
+CREATE POLICY "Users can view own orders" ON public.payment_orders
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Service can manage orders" ON public.payment_orders
+    FOR ALL WITH CHECK (true);
 
--- Voice cache is public read (no user-specific data)
-ALTER TABLE voice_cache ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Anyone can read voice cache" ON voice_cache FOR SELECT USING (true);
+-- RATE LIMITS (service role only)
+CREATE POLICY "Service can manage rate limits" ON public.rate_limits
+    FOR ALL WITH CHECK (true);
 
--- ===========================================
--- DEMO USER (for development without auth)
--- ===========================================
--- Uncomment and run manually if you want a demo user:
-/*
-INSERT INTO user_profiles (id, email, name, credits_remaining, subscription_tier)
-VALUES (
-    'demo-user',
-    'demo@example.com',
-    'Demo User',
-    10000,
-    'free'
-) ON CONFLICT (email) DO NOTHING;
-*/
+-- ============================================================
+-- STEP 6: CREATE STORAGE BUCKET
+-- ============================================================
 
--- ===========================================
--- GRANT PERMISSIONS
--- ===========================================
--- If using service role, grant all permissions
-GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
-GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('audio-generations', 'audio-generations', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage policies (drop first to avoid conflicts)
+DROP POLICY IF EXISTS "Service can upload audio" ON storage.objects;
+DROP POLICY IF EXISTS "Anyone can read audio" ON storage.objects;
+
+CREATE POLICY "Service can upload audio" ON storage.objects
+    FOR INSERT WITH CHECK (bucket_id = 'audio-generations');
+CREATE POLICY "Anyone can read audio" ON storage.objects
+    FOR SELECT USING (bucket_id = 'audio-generations');
+
+-- ============================================================
+-- STEP 7: AUTO-UPDATE TRIGGER
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.user_profiles;
+CREATE TRIGGER set_updated_at
+    BEFORE UPDATE ON public.user_profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_updated_at();
+
+-- ============================================================
+-- DONE! Tables created:
+-- 1. user_profiles      - User info, subscription, credits
+-- 2. saved_voices       - My Voices feature
+-- 3. generation_history - TTS generation records
+-- 4. credit_transactions- Credit audit log
+-- 5. payment_orders     - Razorpay payments
+-- 6. rate_limits        - API rate limiting
+-- Storage: audio-generations bucket (public)
+-- ============================================================

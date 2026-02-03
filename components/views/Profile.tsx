@@ -56,9 +56,10 @@ const TransactionRow: React.FC<{ transaction: Transaction }> = ({ transaction })
 
 interface ProfileProps {
    onLogout?: () => void;
+   onNavigate?: (view: string) => void;
 }
 
-export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
+export const Profile: React.FC<ProfileProps> = ({ onLogout, onNavigate }) => {
    const { profile, transactions, plans, isLoading, error, refetch } = useUserProfile();
 
    // Loading state
@@ -178,50 +179,14 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   </p>
                </div>
                <button
-                  onClick={() => alert('Contact support@decibal.io to upgrade your plan')}
+                  onClick={() => onNavigate?.('subscription')}
                   className="w-full py-3 bg-white text-black font-bold rounded-full hover:bg-gray-100 transition-colors mt-6"
                >
-                  Upgrade Plan
+                  Manage Subscription
                </button>
             </div>
          </div>
 
-         {/* Pricing and Plans */}
-         <div className="mb-12">
-            <h2 className="text-xl font-bold mb-6">Pricing & Plans</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-               {plans.map(plan => (
-                  <div
-                     key={plan.id}
-                     className={`p-6 rounded-xl border transition-all ${plan.id === profile?.plan
-                           ? 'border-black bg-gray-50'
-                           : 'border-gray-200 hover:border-gray-400'
-                        }`}
-                  >
-                     <h3 className="font-bold text-lg mb-1">{plan.name}</h3>
-                     <p className="text-2xl font-bold mb-3">
-                        {plan.price === 0 ? 'Free' : `$${plan.price}/mo`}
-                     </p>
-                     <ul className="text-sm text-gray-600 space-y-2">
-                        <li>• {formatNumber(plan.credits)} characters</li>
-                        <li>• {plan.voiceSlots} voice slots</li>
-                     </ul>
-                     {plan.id === profile?.plan ? (
-                        <div className="mt-4 py-2 text-center text-sm font-semibold text-gray-500">
-                           Current Plan
-                        </div>
-                     ) : (
-                        <button
-                           onClick={() => alert('Contact support@decibal.io to change your plan')}
-                           className="mt-4 w-full py-2 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
-                        >
-                           {plan.price > (plans.find(p => p.id === profile?.plan)?.price || 0) ? 'Upgrade' : 'Downgrade'}
-                        </button>
-                     )}
-                  </div>
-               ))}
-            </div>
-         </div>
 
          {/* Credit Transactions / History */}
          <div className="flex items-center justify-between mb-6">

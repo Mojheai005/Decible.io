@@ -5,6 +5,7 @@ import { Dashboard } from './components/views/Dashboard';
 import { TextToSpeech } from './components/views/TextToSpeech';
 import { VoiceLibrary } from './components/views/VoiceLibrary';
 import { Profile } from './components/views/Profile';
+import { Subscription } from './components/views/Subscription';
 import { HelpCenter } from './components/views/HelpCenter';
 import { Bell, Menu, FileAudio } from 'lucide-react';
 import { AudioProvider } from './src/contexts/GlobalAudioContext';
@@ -21,8 +22,12 @@ const AppContent: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const bellButtonRef = useRef<HTMLButtonElement>(null);
+  const isLoggedInRef = useRef(false);
 
   const { unreadCount, addNotification, showToast } = useNotifications();
+
+  // Keep ref in sync with state to avoid stale closures
+  useEffect(() => { isLoggedInRef.current = isLoggedIn; }, [isLoggedIn]);
 
   // Check real Supabase auth state on mount
   useEffect(() => {
@@ -40,14 +45,17 @@ const AppContent: React.FC = () => {
     // Listen for auth state changes (login/logout/token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        setIsLoggedIn(true);
-        setView('dashboard');
-        addNotification({
-          title: 'Welcome to Decibal!',
-          message: 'Start exploring our voice library or create your first voice generation.',
-          type: 'success',
-        });
-        showToast('Successfully logged in!', 'success');
+        // Only navigate to dashboard on INITIAL sign-in, not on token refresh
+        if (!isLoggedInRef.current) {
+          setIsLoggedIn(true);
+          setView('dashboard');
+          addNotification({
+            title: 'Welcome to Decible!',
+            message: 'Start exploring our voice library or create your first voice generation.',
+            type: 'success',
+          });
+          showToast('Successfully logged in!', 'success');
+        }
       } else if (event === 'SIGNED_OUT') {
         setIsLoggedIn(false);
         setView('landing');
@@ -67,22 +75,23 @@ const AppContent: React.FC = () => {
     showToast('Logged out successfully', 'info');
   };
 
-  const renderView = () => {
-    // Check if view has query params (e.g., library?tab=latest)
-    const [baseView, queryString] = view.split('?');
-    const params = new URLSearchParams(queryString || '');
-    const tabParam = params.get('tab');
+  // Parse current view
+  const [baseView] = view.split('?');
+  const queryString = view.includes('?') ? view.split('?')[1] : '';
+  const viewParams = new URLSearchParams(queryString);
+  const tabParam = viewParams.get('tab');
 
+  const renderView = () => {
     switch (baseView) {
       case 'dashboard':
         return <Dashboard onNavigate={setView} />;
-      case 'tts':
-        return <TextToSpeech onNavigate={setView} />;
       case 'voice-creator':
       case 'library':
         return <VoiceLibrary onNavigate={setView} initialTab={tabParam || undefined} />;
       case 'profile':
-        return <Profile onLogout={handleLogout} />;
+        return <Profile onLogout={handleLogout} onNavigate={setView} />;
+      case 'subscription':
+        return <Subscription onNavigate={setView} />;
       case 'voice-to-text':
         return (
           <div className="flex flex-col items-center justify-center h-full text-center p-10">
@@ -95,6 +104,8 @@ const AppContent: React.FC = () => {
         );
       case 'help':
         return <HelpCenter />;
+      case 'tts':
+        return null; // TTS is always mounted below, hidden when not active
       default:
         return <Dashboard onNavigate={setView} />;
     }
@@ -119,6 +130,7 @@ const AppContent: React.FC = () => {
         currentView={view}
         onNavigate={setView}
         isCollapsed={isSidebarCollapsed}
+        onLogout={handleLogout}
       />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white relative">
@@ -132,13 +144,13 @@ const AppContent: React.FC = () => {
             </button>
             <div className="flex items-center gap-2 text-gray-500">
               <span className="hover:text-black cursor-pointer font-medium" onClick={() => setView('dashboard')}>
-                {view === 'dashboard' ? 'Workspaces' : 'Decibal'}
+                {view === 'dashboard' ? 'Workspaces' : 'Decible'}
               </span>
               {view !== 'dashboard' && (
                 <>
                   <span className="text-gray-300">/</span>
                   <span className="font-medium text-gray-900 capitalize">
-                    {view === 'tts' ? 'Text to Speech' : view === 'library' || view === 'voice-creator' ? 'Voice Library' : view.replace(/-/g, ' ')}
+                    {view === 'tts' ? 'Text to Speech' : view === 'library' || view === 'voice-creator' ? 'Voice Library' : view === 'subscription' ? 'Subscription' : view.replace(/-/g, ' ')}
                   </span>
                 </>
               )}
@@ -179,7 +191,11 @@ const AppContent: React.FC = () => {
         </header>
 
         <main className="flex-1 overflow-y-auto relative bg-white">
-          {renderView()}
+          {/* TTS is always mounted to preserve generation state across view switches */}
+          <div className={baseView === 'tts' ? 'h-full' : 'hidden'}>
+            <TextToSpeech onNavigate={setView} />
+          </div>
+          {baseView !== 'tts' && renderView()}
         </main>
 
         <GlobalPlayer />

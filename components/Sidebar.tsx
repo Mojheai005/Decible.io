@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, Mic, Music, Users, MessageSquare, Menu, ChevronRight, ChevronDown, Plus, Edit2, Check, Sparkles, Home, Trash2, HelpCircle } from 'lucide-react';
+import { LayoutGrid, Mic, Music, Users, MessageSquare, Menu, ChevronRight, ChevronDown, Plus, Edit2, Check, Sparkles, Home, Trash2, HelpCircle, Settings, CreditCard, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { createClient } from '@/lib/supabase/client';
 
 interface SidebarProps {
   currentView: string;
   onNavigate: (view: string) => void;
   isCollapsed: boolean;
+  onLogout?: () => void;
 }
 
 interface Workspace {
@@ -14,7 +16,7 @@ interface Workspace {
   name: string;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCollapsed }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCollapsed, onLogout }) => {
   // Fetch real user profile
   const { profile, isLoading: profileLoading } = useUserProfile();
 
@@ -79,8 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
 
   // Format credits for display
   const formatCredits = (num: number): string => {
-    if (num >= 1000) return `${(num / 1000).toFixed(0)}k`;
-    return num.toString();
+    if (num >= 10000) return `${(num / 1000).toFixed(0)}k`;
+    return num.toLocaleString();
   };
 
   // Get user initials
@@ -118,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
               animate={{ opacity: 1 }}
               className="text-lg font-bold tracking-tight text-gray-900 whitespace-nowrap"
             >
-              Decibal
+              Decible
             </motion.span>
           )}
         </div>
@@ -248,11 +250,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
             )
           })}
 
-          {/* Bottom User Profile */}
-          <div className={`mt-auto pt-4 border-t border-gray-100 w-full ${isCollapsed ? 'flex justify-center' : ''}`}>
+          {/* Bottom User Profile with Hover Dropdown */}
+          <div className={`mt-auto pt-4 border-t border-gray-100 w-full ${isCollapsed ? 'flex justify-center' : ''} relative group/profile`}>
             <div
-              onClick={() => onNavigate('profile')}
-              title="Profile"
               className={`flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''}`}
             >
               {profileLoading ? (
@@ -271,6 +271,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Hover Dropdown Menu */}
+            <div className="absolute bottom-full left-0 right-0 mb-2 opacity-0 invisible group-hover/profile:opacity-100 group-hover/profile:visible transition-all duration-200 z-50">
+              <div className="bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden py-1">
+                <button
+                  onClick={() => onNavigate('profile')}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Settings className="w-4 h-4 text-gray-400" />
+                  <span>Settings</span>
+                </button>
+                <button
+                  onClick={() => onNavigate('subscription')}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <CreditCard className="w-4 h-4 text-gray-400" />
+                  <span>Subscription</span>
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                <button
+                  onClick={async () => {
+                    const supabase = createClient();
+                    await supabase.auth.signOut();
+                    if (onLogout) onLogout();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </button>
+              </div>
             </div>
           </div>
 

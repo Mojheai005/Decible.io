@@ -42,7 +42,7 @@ const faqSections: FAQSection[] = [
       },
       {
         question: 'How do I upgrade my plan?',
-        answer: 'Visit your Profile page and click on the plan you want to upgrade to. For enterprise plans, contact us at support@decibal.io.'
+        answer: 'Visit your Profile page and click on the plan you want to upgrade to. For enterprise plans, contact us at support@decible.io.'
       },
       {
         question: 'Do unused credits roll over?',
@@ -60,11 +60,11 @@ const faqSections: FAQSection[] = [
       },
       {
         question: 'Is there an API available?',
-        answer: 'Yes! Our API allows you to integrate Decibal voice generation into your applications. Contact support@decibal.io for API access.'
+        answer: 'Yes! Our API allows you to integrate Decible voice generation into your applications. Contact support@decible.io for API access.'
       },
       {
         question: 'My generation failed. What should I do?',
-        answer: 'Try again with a shorter text segment. If the issue persists, check your internet connection or contact support@decibal.io.'
+        answer: 'Try again with a shorter text segment. If the issue persists, check your internet connection or contact support@decible.io.'
       },
     ]
   },
@@ -150,13 +150,13 @@ export const HelpCenter: React.FC = () => {
               Our support team is here to assist you with any questions.
             </p>
             <a
-              href="mailto:support@decibal.io"
+              href="mailto:support@decible.io"
               className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium text-sm hover:bg-purple-700 transition-colors"
             >
               <MessageCircle className="w-4 h-4" />
               Contact Support
             </a>
-            <p className="text-xs text-gray-500 mt-2">support@decibal.io</p>
+            <p className="text-xs text-gray-500 mt-2">support@decible.io</p>
           </div>
         </div>
       </motion.div>
@@ -184,7 +184,7 @@ export const HelpCenter: React.FC = () => {
       >
         <p className="text-sm text-gray-400">
           Can't find what you're looking for?{' '}
-          <a href="mailto:support@decibal.io" className="text-purple-600 hover:underline">
+          <a href="mailto:support@decible.io" className="text-purple-600 hover:underline">
             Email us directly
           </a>
         </p>

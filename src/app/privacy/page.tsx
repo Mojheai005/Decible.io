@@ -12,7 +12,7 @@ export default function PrivacyPolicy() {
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center">
           <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-black transition-colors">
             <ArrowLeft className="w-5 h-5" />
-            <span className="font-medium">Back to Decibal</span>
+            <span className="font-medium">Back to Decible</span>
           </Link>
         </div>
       </header>
@@ -32,7 +32,7 @@ export default function PrivacyPolicy() {
         {/* Content */}
         <div className="prose prose-gray max-w-none">
           <p className="text-gray-600 text-lg leading-relaxed mb-8">
-            At Decibal, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our voice generation services.
+            At Decible, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our voice generation services.
           </p>
 
           <section className="mb-10">
@@ -118,8 +118,8 @@ export default function PrivacyPolicy() {
               If you have any questions about this Privacy Policy or our privacy practices, please contact us at:
             </p>
             <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <p className="font-medium text-gray-900">Decibal Support</p>
-              <a href="mailto:support@decibal.io" className="text-purple-600 hover:underline">support@decibal.io</a>
+              <p className="font-medium text-gray-900">Decible Support</p>
+              <a href="mailto:support@decible.io" className="text-purple-600 hover:underline">support@decible.io</a>
             </div>
           </section>
         </div>
@@ -128,7 +128,7 @@ export default function PrivacyPolicy() {
       {/* Footer */}
       <footer className="border-t border-gray-100 py-8">
         <div className="max-w-4xl mx-auto px-6 text-center text-sm text-gray-500">
-          © 2025 Decibal Inc. All rights reserved.
+          © 2025 Decible Inc. All rights reserved.
         </div>
       </footer>
     </div>

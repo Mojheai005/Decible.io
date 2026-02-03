@@ -12,7 +12,7 @@ export default function TermsOfService() {
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center">
           <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-black transition-colors">
             <ArrowLeft className="w-5 h-5" />
-            <span className="font-medium">Back to Decibal</span>
+            <span className="font-medium">Back to Decible</span>
           </Link>
         </div>
       </header>
@@ -32,20 +32,20 @@ export default function TermsOfService() {
         {/* Content */}
         <div className="prose prose-gray max-w-none">
           <p className="text-gray-600 text-lg leading-relaxed mb-8">
-            Welcome to Decibal. By accessing or using our services, you agree to be bound by these Terms of Service. Please read them carefully.
+            Welcome to Decible. By accessing or using our services, you agree to be bound by these Terms of Service. Please read them carefully.
           </p>
 
           <section className="mb-10">
             <h2 className="text-xl font-bold text-gray-900 mb-4">1. Acceptance of Terms</h2>
             <p className="text-gray-600">
-              By creating an account or using Decibal's services, you agree to these Terms of Service and our Privacy Policy. If you do not agree to these terms, please do not use our services.
+              By creating an account or using Decible's services, you agree to these Terms of Service and our Privacy Policy. If you do not agree to these terms, please do not use our services.
             </p>
           </section>
 
           <section className="mb-10">
             <h2 className="text-xl font-bold text-gray-900 mb-4">2. Description of Service</h2>
             <p className="text-gray-600">
-              Decibal provides AI-powered voice generation services, including text-to-speech conversion, voice cloning, and related audio generation features. We reserve the right to modify, suspend, or discontinue any aspect of our services at any time.
+              Decible provides AI-powered voice generation services, including text-to-speech conversion, voice cloning, and related audio generation features. We reserve the right to modify, suspend, or discontinue any aspect of our services at any time.
             </p>
           </section>
 
@@ -64,7 +64,7 @@ export default function TermsOfService() {
 
           <section className="mb-10">
             <h2 className="text-xl font-bold text-gray-900 mb-4">4. Acceptable Use</h2>
-            <p className="text-gray-600 mb-4">You agree not to use Decibal's services to:</p>
+            <p className="text-gray-600 mb-4">You agree not to use Decible's services to:</p>
             <ul className="list-disc pl-6 space-y-2 text-gray-600">
               <li>Create content that impersonates others without their consent</li>
               <li>Generate harmful, abusive, defamatory, or illegal content</li>
@@ -96,7 +96,7 @@ export default function TermsOfService() {
           <section className="mb-10">
             <h2 className="text-xl font-bold text-gray-900 mb-4">7. Intellectual Property</h2>
             <div className="space-y-4 text-gray-600">
-              <p><strong className="text-gray-800">Our Property:</strong> Decibal and its licensors own all rights to the service, including our AI models, software, and branding.</p>
+              <p><strong className="text-gray-800">Our Property:</strong> Decible and its licensors own all rights to the service, including our AI models, software, and branding.</p>
               <p><strong className="text-gray-800">Your Content:</strong> You retain ownership of the text and audio samples you provide. You grant us a license to process this content to provide our services.</p>
               <p><strong className="text-gray-800">Generated Content:</strong> Subject to these terms, you own the audio generated through our services for your personal or commercial use.</p>
             </div>
@@ -143,8 +143,8 @@ export default function TermsOfService() {
               If you have any questions about these Terms of Service, please contact us at:
             </p>
             <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <p className="font-medium text-gray-900">Decibal Support</p>
-              <a href="mailto:support@decibal.io" className="text-purple-600 hover:underline">support@decibal.io</a>
+              <p className="font-medium text-gray-900">Decible Support</p>
+              <a href="mailto:support@decible.io" className="text-purple-600 hover:underline">support@decible.io</a>
             </div>
           </section>
         </div>
@@ -153,7 +153,7 @@ export default function TermsOfService() {
       {/* Footer */}
       <footer className="border-t border-gray-100 py-8">
         <div className="max-w-4xl mx-auto px-6 text-center text-sm text-gray-500">
-          © 2025 Decibal Inc. All rights reserved.
+          © 2025 Decible Inc. All rights reserved.
         </div>
       </footer>
     </div>

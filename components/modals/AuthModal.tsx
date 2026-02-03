@@ -21,11 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
@@ -77,7 +73,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     <span className="text-white font-bold text-lg">dB</span>
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome back</h2>
-                <p className="text-gray-500 text-sm">Sign in to continue to Decibal</p>
+                <p className="text-gray-500 text-sm">Sign in to continue to Decible</p>
             </div>
 
             {error && (

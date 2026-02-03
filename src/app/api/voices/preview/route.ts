@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getNextApiKey, getCurrentApiKey } from '@/lib/dubvoice';
-import { API_CONFIG } from '@/lib/constants';
-
-const DUBVOICE_BASE_URL = API_CONFIG.DUBVOICE_BASE_URL;
+import { generateTTS } from '@/lib/kieai';
+import { getVoiceById } from '@/lib/voices-data';
 
 // Cache for generated previews (in-memory for dev, use Redis/KV in production)
 const previewCache = new Map<string, string>();
@@ -29,80 +27,55 @@ export async function GET(request: Request) {
             return NextResponse.json({ previewUrl: cachedUrl, cached: true });
         }
 
-        const apiKey = getNextApiKey();
+        // Get voice data to get the actual voice name for API
+        const voiceData = getVoiceById(voiceId);
+        const voiceName = voiceData?.voiceName || voiceId;
 
         // Pick a random preview text
         const text = PREVIEW_TEXTS[Math.floor(Math.random() * PREVIEW_TEXTS.length)];
 
-        // Generate preview using TTS
-
-        const initResponse = await fetch(`${DUBVOICE_BASE_URL}/tts`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
+        // Generate preview using Kie.ai TTS (direct response, no polling!)
+        const audioBuffer = await generateTTS({
+            text,
+            voice: voiceName,
+            voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+                speed: 1.0,
+                style: 0,
             },
-            body: JSON.stringify({
-                text,
-                voice_id: voiceId,
-                model_id: 'eleven_multilingual_v2',
-                voice_settings: {
-                    stability: 0.5,
-                    similarity_boost: 0.75,
-                    speed: 1.0,
-                    style: 0,
-                    use_speaker_boost: true
-                }
-            })
         });
 
-        if (!initResponse.ok) {
-            const errorText = await initResponse.text();
-            console.error('Preview generation failed:', errorText);
-            return NextResponse.json({ error: 'Preview generation failed', details: errorText }, { status: initResponse.status });
+        // Convert ArrayBuffer to base64 data URL for immediate playback
+        const base64 = Buffer.from(audioBuffer).toString('base64');
+        const dataUrl = `data:audio/mpeg;base64,${base64}`;
+
+        // Cache the preview URL (in production, you might want to store this in Supabase)
+        previewCache.set(voiceId, dataUrl);
+
+        // Limit cache size
+        if (previewCache.size > 100) {
+            const firstKey = previewCache.keys().next().value;
+            if (firstKey) previewCache.delete(firstKey);
         }
 
-        const initData = await initResponse.json();
-        const taskId = initData.task_id;
-
-        if (!taskId) {
-            return NextResponse.json({ error: 'No task_id returned' }, { status: 500 });
-        }
-
-        // Poll for completion
-        const pollKey = getCurrentApiKey();
-        const maxAttempts = 30; // 30 seconds max
-        const delayMs = 1000;
-
-        for (let i = 0; i < maxAttempts; i++) {
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-
-            const statusResponse = await fetch(`${DUBVOICE_BASE_URL}/tts/${taskId}`, {
-                headers: { 'Authorization': `Bearer ${pollKey}` },
-                cache: 'no-store'
-            });
-
-            if (statusResponse.ok) {
-                const statusData = await statusResponse.json();
-
-                if (statusData.status === 'completed' && statusData.result) {
-                    // Cache the preview URL
-                    previewCache.set(voiceId, statusData.result);
-
-                    return NextResponse.json({
-                        previewUrl: statusData.result,
-                        cached: false
-                    });
-                } else if (statusData.status === 'failed') {
-                    return NextResponse.json({ error: 'Preview generation failed', details: statusData.error }, { status: 500 });
-                }
-            }
-        }
-
-        return NextResponse.json({ error: 'Preview generation timed out' }, { status: 408 });
+        return NextResponse.json({
+            previewUrl: dataUrl,
+            cached: false
+        });
 
     } catch (error) {
         console.error('Preview API Error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+
+        if (error instanceof Error) {
+            if (error.message.includes('Rate limit')) {
+                return NextResponse.json(
+                    { error: 'Rate limit exceeded', details: 'Please wait a moment and try again' },
+                    { status: 429 }
+                );
+            }
+        }
+
+        return NextResponse.json({ error: 'Failed to generate preview' }, { status: 500 });
     }
 }
