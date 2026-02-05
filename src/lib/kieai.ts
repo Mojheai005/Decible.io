@@ -36,7 +36,7 @@ interface TaskStatusResponse {
     data: {
         taskId: string
         model: string
-        state: 'pending' | 'processing' | 'success' | 'failed'
+        state: 'waiting' | 'queuing' | 'generating' | 'success' | 'fail'
         resultJson?: string
         failCode?: string | null
         failMsg?: string | null
@@ -107,7 +107,7 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         throw new Error('Missing KIEAI_API_KEY environment variable')
     }
 
-    const maxAttempts = 60 // 60 attempts * 2 seconds = 2 minutes max
+    const maxAttempts = 25 // 25 attempts * 2 seconds = 50 seconds max (fits within Vercel 60s limit)
     const pollInterval = 2000 // 2 seconds
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -142,7 +142,7 @@ async function pollTaskStatus(taskId: string): Promise<string> {
             throw new Error('No audio URL in result')
         }
 
-        if (state === 'failed') {
+        if (state === 'fail') {
             throw new Error(`TTS generation failed: ${failMsg || 'Unknown error'}`)
         }
 
@@ -150,7 +150,7 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         await new Promise(resolve => setTimeout(resolve, pollInterval))
     }
 
-    throw new Error('TTS generation timed out after 2 minutes')
+    throw new Error('TTS generation timed out after 50 seconds')
 }
 
 /**

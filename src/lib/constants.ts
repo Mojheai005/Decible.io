@@ -151,7 +151,7 @@ export const AUDIO_CONFIG = {
     SUPPORTED_FORMATS: ['mp3', 'wav', 'ogg'] as const,
     DEFAULT_FORMAT: 'mp3',
     MAX_DURATION_SECONDS: 600,
-    STORAGE_BUCKET: 'generations',
+    STORAGE_BUCKET: 'audio-generations',
 } as const
 
 // UI Configuration

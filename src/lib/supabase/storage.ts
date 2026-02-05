@@ -19,7 +19,7 @@ export async function uploadAudio(audioBuffer: ArrayBuffer, userId: string): Pro
 
     const { data, error } = await supabase
         .storage
-        .from('generations')
+        .from('audio-generations')
         .upload(fileName, audioBuffer, {
             contentType: 'audio/mpeg',
             upsert: false
@@ -33,7 +33,7 @@ export async function uploadAudio(audioBuffer: ArrayBuffer, userId: string): Pro
     // Get Public URL
     const { data: { publicUrl } } = supabase
         .storage
-        .from('generations')
+        .from('audio-generations')
         .getPublicUrl(fileName);
 
     return publicUrl;

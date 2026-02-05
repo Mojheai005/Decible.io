@@ -122,7 +122,7 @@ export async function checkSubscriptionTier(
     try {
         const supabase = await createClient()
         const { data: profile } = await supabase
-            .from('profiles')
+            .from('user_profiles')
             .select('subscription_tier')
             .eq('id', userId)
             .single()
@@ -145,8 +145,8 @@ export async function checkCredits(
     try {
         const supabase = await createClient()
         const { data: profile } = await supabase
-            .from('profiles')
-            .select('credits_balance')
+            .from('user_profiles')
+            .select('credits_remaining')
             .eq('id', userId)
             .single()
 
@@ -155,8 +155,8 @@ export async function checkCredits(
         }
 
         return {
-            hasCredits: profile.credits_balance >= requiredCredits,
-            balance: profile.credits_balance,
+            hasCredits: profile.credits_remaining >= requiredCredits,
+            balance: profile.credits_remaining,
         }
     } catch {
         return { hasCredits: false, balance: 0 }
@@ -178,7 +178,7 @@ export async function getUserProfile(userId: string) {
     try {
         const supabase = await createClient()
         const { data, error } = await supabase
-            .from('profiles')
+            .from('user_profiles')
             .select('*')
             .eq('id', userId)
             .single()

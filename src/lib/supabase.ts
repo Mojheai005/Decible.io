@@ -31,7 +31,7 @@ export interface UserProfile {
     name?: string
     avatar_url?: string
     credits_remaining: number
-    subscription_tier: 'free' | 'starter' | 'pro' | 'enterprise'
+    subscription_tier: 'free' | 'starter' | 'creator' | 'pro' | 'advanced'
     created_at: string
     updated_at: string
 }
@@ -94,9 +94,9 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
 }
 
 export async function updateUserCredits(userId: string, creditsUsed: number): Promise<boolean> {
-    const { error } = await supabase.rpc('deduct_credits', {
-        user_id: userId,
-        amount: creditsUsed,
+    const { error } = await supabase.rpc('use_credits', {
+        p_user_id: userId,
+        p_amount: creditsUsed,
     })
 
     if (error) {
