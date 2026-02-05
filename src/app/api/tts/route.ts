@@ -286,7 +286,8 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error) {
-        console.error('TTS API Error:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('TTS API Error:', errorMessage, error);
 
         // Handle specific error types
         if (error instanceof Error) {
@@ -305,7 +306,7 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json(
-            { error: 'Internal Server Error', message: 'Failed to generate audio' },
+            { error: 'Generation failed', message: errorMessage },
             { status: 500 }
         );
     }

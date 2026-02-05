@@ -74,6 +74,8 @@ async function createTask(params: KieAITTSParams): Promise<string> {
         },
     }
 
+    console.log('[Kie.ai] Creating task — voice:', requestBody.input.voice, '| text length:', requestBody.input.text.length)
+
     const response = await fetch(`${KIEAI_BASE_URL}/jobs/createTask`, {
         method: 'POST',
         headers: {
@@ -85,14 +87,15 @@ async function createTask(params: KieAITTSParams): Promise<string> {
 
     if (!response.ok) {
         const errorText = await response.text()
-        console.error('Kie.ai Create Task Error:', response.status, errorText)
-        throw new Error(`Kie.ai task creation failed: ${response.status}`)
+        console.error('[Kie.ai] Create Task HTTP Error:', response.status, errorText)
+        throw new Error(`Kie.ai task creation failed (HTTP ${response.status}): ${errorText}`)
     }
 
     const result: CreateTaskResponse = await response.json()
+    console.log('[Kie.ai] Create Task Response:', JSON.stringify(result))
 
     if (result.code !== 200 || !result.data?.taskId) {
-        throw new Error(`Kie.ai task creation failed: ${result.msg}`)
+        throw new Error(`Kie.ai task creation failed: ${result.msg || JSON.stringify(result)}`)
     }
 
     return result.data.taskId
@@ -128,22 +131,26 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         const result: TaskStatusResponse = await response.json()
 
         if (result.code !== 200) {
+            console.error('[Kie.ai] Poll non-200 code:', JSON.stringify(result))
             throw new Error(`Task polling failed: ${result.msg}`)
         }
 
-        const { state, resultJson, failMsg } = result.data
+        const { state, resultJson, failMsg, failCode } = result.data
+        console.log(`[Kie.ai] Poll attempt ${attempt + 1} — state: ${state}`)
 
         if (state === 'success' && resultJson) {
             // Parse the result to get audio URL
             const parsed: ResultJson = JSON.parse(resultJson)
             if (parsed.resultUrls && parsed.resultUrls.length > 0) {
+                console.log('[Kie.ai] Success! Audio URL received')
                 return parsed.resultUrls[0]
             }
             throw new Error('No audio URL in result')
         }
 
         if (state === 'fail') {
-            throw new Error(`TTS generation failed: ${failMsg || 'Unknown error'}`)
+            console.error('[Kie.ai] Task failed:', failCode, failMsg)
+            throw new Error(`TTS generation failed: ${failMsg || failCode || 'Unknown error'}`)
         }
 
         // Still processing, wait and poll again
