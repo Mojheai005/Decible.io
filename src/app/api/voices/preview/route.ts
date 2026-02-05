@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
+import { getVoiceById, getVoicePreviewUrl } from '@/lib/voices-data';
 import { generateTTS } from '@/lib/kieai';
-import { getVoiceById } from '@/lib/voices-data';
 
-// Cache for generated previews (in-memory for dev, use Redis/KV in production)
+// Cache for generated previews (fallback when static URL not available)
 const previewCache = new Map<string, string>();
 
-// Short sample texts for previews
+// Short sample texts for TTS-generated previews
 const PREVIEW_TEXTS = [
     "Welcome to your voice preview. This is how I sound when speaking naturally.",
     "Hello there! I'm excited to be your voice today. Let me show you what I can do.",
@@ -21,20 +21,31 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'voice_id is required' }, { status: 400 });
         }
 
-        // Check cache first
-        const cachedUrl = previewCache.get(voiceId);
-        if (cachedUrl) {
-            return NextResponse.json({ previewUrl: cachedUrl, cached: true });
+        // Get voice data
+        const voiceData = getVoiceById(voiceId);
+
+        // Try static preview URL first (instant, free, no API call needed)
+        if (voiceData) {
+            const staticUrl = getVoicePreviewUrl(voiceData);
+            if (staticUrl) {
+                return NextResponse.json({
+                    previewUrl: staticUrl,
+                    cached: true,
+                    source: 'static',
+                });
+            }
         }
 
-        // Get voice data to get the actual voice name for API
-        const voiceData = getVoiceById(voiceId);
-        const voiceName = voiceData?.voiceName || voiceId;
+        // Fallback: Check our in-memory cache
+        const cachedUrl = previewCache.get(voiceId);
+        if (cachedUrl) {
+            return NextResponse.json({ previewUrl: cachedUrl, cached: true, source: 'cache' });
+        }
 
-        // Pick a random preview text
+        // Last resort: Generate via TTS API (costs credits, slower)
+        const voiceName = voiceData?.voiceName || voiceId;
         const text = PREVIEW_TEXTS[Math.floor(Math.random() * PREVIEW_TEXTS.length)];
 
-        // Generate preview using Kie.ai TTS (direct response, no polling!)
         const audioBuffer = await generateTTS({
             text,
             voice: voiceName,
@@ -50,7 +61,7 @@ export async function GET(request: Request) {
         const base64 = Buffer.from(audioBuffer).toString('base64');
         const dataUrl = `data:audio/mpeg;base64,${base64}`;
 
-        // Cache the preview URL (in production, you might want to store this in Supabase)
+        // Cache the preview
         previewCache.set(voiceId, dataUrl);
 
         // Limit cache size
@@ -61,7 +72,8 @@ export async function GET(request: Request) {
 
         return NextResponse.json({
             previewUrl: dataUrl,
-            cached: false
+            cached: false,
+            source: 'generated',
         });
 
     } catch (error) {

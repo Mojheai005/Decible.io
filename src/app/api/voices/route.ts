@@ -6,6 +6,7 @@ import {
     getAllAccents,
     getAllUseCases,
     generateUsageCount,
+    getVoicePreviewUrl,
 } from '@/lib/voices-data';
 
 // Transform voice data to match the existing frontend interface
@@ -21,7 +22,7 @@ function transformVoice(v: typeof VOICES_DATA[0]) {
         descriptive: v.description,
         useCase: v.category,
         useCases: v.useCases,
-        previewUrl: null, // Will be generated on-demand via /api/voices/preview
+        previewUrl: getVoicePreviewUrl(v), // Static preview from Kie.ai CDN
         description: v.description,
         tags: v.tags,
         usageCount: generateUsageCount(v.name),
