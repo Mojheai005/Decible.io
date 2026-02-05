@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Mic2, Mail, Lock, User, Eye, EyeOff, Loader2, Check } from 'lucide-react'
+import { Mail, Lock, User, Eye, EyeOff, Loader2, Check } from 'lucide-react'
+import DecibleLogo from '@/components/DecibleLogo'
 
 export default function RegisterPage() {
     const router = useRouter()
@@ -150,10 +151,8 @@ export default function RegisterPage() {
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <Link href="/" className="inline-flex items-center gap-2">
-                        <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center">
-                            <Mic2 className="w-7 h-7 text-white" />
-                        </div>
-                        <span className="text-2xl font-bold text-white">NMM Voice</span>
+                        <DecibleLogo size={42} className="text-white" />
+                        <span className="text-2xl font-bold text-white">Decible</span>
                     </Link>
                     <h1 className="text-2xl font-bold text-white mt-6">Create your account</h1>
                     <p className="text-gray-400 mt-2">Start with 5,000 free credits</p>

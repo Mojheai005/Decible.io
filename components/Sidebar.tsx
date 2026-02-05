@@ -3,6 +3,7 @@ import { LayoutGrid, Mic, Music, Users, MessageSquare, Menu, ChevronRight, Chevr
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { createClient } from '@/lib/supabase/client';
+import DecibleLogo from './DecibleLogo';
 
 interface SidebarProps {
   currentView: string;
@@ -111,9 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
 
         {/* Logo Area */}
         <div className={`flex items-center gap-3 mb-6 ${isCollapsed ? 'justify-center' : 'px-2'}`}>
-          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-white text-xs font-bold">dB</span>
-          </div>
+          <DecibleLogo size={30} className="text-gray-900 shrink-0" />
           {!isCollapsed && (
             <motion.span
               initial={{ opacity: 0 }}

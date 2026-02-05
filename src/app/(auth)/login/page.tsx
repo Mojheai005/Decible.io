@@ -4,7 +4,8 @@ import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Mic2, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
+import DecibleLogo from '@/components/DecibleLogo'
 
 function LoginForm() {
     const router = useRouter()
@@ -79,10 +80,8 @@ function LoginForm() {
             {/* Logo */}
             <div className="text-center mb-8">
                 <Link href="/" className="inline-flex items-center gap-2">
-                    <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center">
-                        <Mic2 className="w-7 h-7 text-white" />
-                    </div>
-                    <span className="text-2xl font-bold text-white">NMM Voice</span>
+                    <DecibleLogo size={42} className="text-white" />
+                    <span className="text-2xl font-bold text-white">Decible</span>
                 </Link>
                 <h1 className="text-2xl font-bold text-white mt-6">Welcome back</h1>
                 <p className="text-gray-400 mt-2">Sign in to continue to your account</p>
@@ -237,8 +236,8 @@ function LoginLoading() {
     return (
         <div className="w-full max-w-md">
             <div className="text-center mb-8">
-                <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center mx-auto">
-                    <Mic2 className="w-7 h-7 text-white" />
+                <div className="flex items-center justify-center mx-auto">
+                    <DecibleLogo size={42} className="text-white" />
                 </div>
             </div>
             <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700 rounded-2xl p-8">
