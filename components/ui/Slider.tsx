@@ -57,25 +57,25 @@ export const Slider: React.FC<SliderProps> = ({
         <label className="text-sm font-semibold text-gray-900">{label}</label>
       </div>
 
-      {/* Slider Container */}
+      {/* Slider Container - increased height for better touch targets */}
       <div
-        className="relative h-6 flex items-center"
+        className="relative h-10 flex items-center"
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
         {/* Background Track */}
-        <div className="absolute w-full h-1.5 bg-gray-200 rounded-full pointer-events-none" />
+        <div className="absolute w-full h-2 bg-gray-200 rounded-full pointer-events-none" />
 
         {/* Filled Track */}
         <div
-          className="absolute h-1.5 rounded-full pointer-events-none"
+          className="absolute h-2 rounded-full pointer-events-none"
           style={{
             width: `${percentage}%`,
             backgroundColor: trackColor,
           }}
         />
 
-        {/* Native Range Input - handles all interaction smoothly */}
+        {/* Native Range Input - handles all interaction smoothly, larger for touch */}
         <input
           type="range"
           min={min}
@@ -87,16 +87,16 @@ export const Slider: React.FC<SliderProps> = ({
           onMouseUp={() => setIsDragging(false)}
           onTouchStart={() => setIsDragging(true)}
           onTouchEnd={() => setIsDragging(false)}
-          className="absolute w-full h-6 opacity-0 cursor-pointer z-10"
+          className="absolute w-full h-10 opacity-0 cursor-pointer z-10"
         />
 
-        {/* Custom Thumb */}
+        {/* Custom Thumb - larger for better visibility */}
         <div
-          className="absolute w-4 h-4 rounded-full shadow-md border-2 border-white transform -translate-x-1/2 pointer-events-none transition-transform duration-100"
+          className="absolute w-5 h-5 rounded-full shadow-md border-2 border-white transform -translate-x-1/2 pointer-events-none transition-transform duration-100"
           style={{
             left: `${percentage}%`,
             backgroundColor: trackColor,
-            transform: `translateX(-50%) scale(${isDragging ? 1.2 : isHovering ? 1.1 : 1})`,
+            transform: `translateX(-50%) scale(${isDragging ? 1.15 : isHovering ? 1.1 : 1})`,
           }}
         >
           {/* Value Tooltip */}

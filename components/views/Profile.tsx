@@ -65,7 +65,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onNavigate }) => {
    // Loading state
    if (isLoading) {
       return (
-         <div className="p-8 flex items-center justify-center h-full">
+         <div className="p-4 md:p-8 flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
             <span className="ml-3 text-gray-500">Loading profile...</span>
          </div>
@@ -75,7 +75,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onNavigate }) => {
    // Error state
    if (error) {
       return (
-         <div className="p-8 max-w-md mx-auto text-center">
+         <div className="p-4 md:p-8 max-w-md mx-auto text-center">
             <div className="bg-red-50 border border-red-200 rounded-xl p-6">
                <h3 className="font-bold text-red-800 mb-2">Failed to load profile</h3>
                <p className="text-red-600 text-sm mb-4">{error}</p>
@@ -99,27 +99,27 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onNavigate }) => {
    const currentPlan = plans.find(p => p.id === profile?.plan) || plans[0];
 
    return (
-      <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto">
+      <div className="p-4 md:p-8 max-w-5xl mx-auto h-full overflow-y-auto pb-24 md:pb-8">
          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl font-bold text-gray-900">My Account</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">My Account</h1>
             <button
                onClick={refetch}
-               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+               className="p-2.5 md:p-2 hover:bg-gray-100 rounded-lg transition-colors active:bg-gray-100"
                title="Refresh"
             >
                <RefreshCw className="w-5 h-5 text-gray-500" />
             </button>
          </div>
-         <p className="text-gray-500 mb-10">
+         <p className="text-gray-500 mb-6 md:mb-10 text-sm md:text-base">
             Welcome back, <span className="font-medium text-gray-900">{profile?.name || 'User'}</span>
          </p>
 
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 mb-8 md:mb-12">
             {/* Usage Card */}
-            <div className="col-span-2 bg-white rounded-2xl border border-gray-200 p-8 shadow-sm relative overflow-hidden">
-               <h2 className="text-lg font-bold mb-6">Subscription Usage</h2>
+            <div className="md:col-span-2 bg-white rounded-2xl border border-gray-200 p-5 md:p-8 shadow-sm relative overflow-hidden">
+               <h2 className="text-base md:text-lg font-bold mb-4 md:mb-6">Subscription Usage</h2>
 
-               <div className="mb-8">
+               <div className="mb-6 md:mb-8">
                   <div className="flex justify-between text-sm font-medium mb-2">
                      <span>Characters used</span>
                      <span className="text-gray-900">
@@ -142,30 +142,30 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onNavigate }) => {
                   </p>
                </div>
 
-               <div className="grid grid-cols-3 gap-6">
-                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                     <div className="text-2xl font-bold text-gray-900">
+               <div className="grid grid-cols-3 gap-3 md:gap-6">
+                  <div className="p-3 md:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                     <div className="text-lg md:text-2xl font-bold text-gray-900">
                         {formatNumber(profile?.totalCredits || 0)}
                      </div>
-                     <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Total Credits</div>
+                     <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Total</div>
                   </div>
-                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                     <div className="text-2xl font-bold text-gray-900">
+                  <div className="p-3 md:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                     <div className="text-lg md:text-2xl font-bold text-gray-900">
                         {formatNumber(profile?.remainingCredits || 0)}
                      </div>
-                     <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Remaining</div>
+                     <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Left</div>
                   </div>
-                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                     <div className="text-2xl font-bold text-gray-900 capitalize">
+                  <div className="p-3 md:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                     <div className="text-lg md:text-2xl font-bold text-gray-900 capitalize">
                         {profile?.plan || 'Free'}
                      </div>
-                     <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Current Plan</div>
+                     <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Plan</div>
                   </div>
                </div>
             </div>
 
             {/* Plan Details */}
-            <div className="bg-gray-900 rounded-2xl p-8 text-white flex flex-col justify-between shadow-xl shadow-gray-200">
+            <div className="bg-gray-900 rounded-2xl p-5 md:p-8 text-white flex flex-col justify-between shadow-xl shadow-gray-200">
                <div>
                   <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-6">
                      <User className="w-6 h-6 text-white" />

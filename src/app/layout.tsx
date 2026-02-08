@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Roboto } from 'next/font/google'
 import './globals.css'
 
@@ -8,6 +8,15 @@ const roboto = Roboto({
     variable: '--font-roboto',
 })
 
+export const viewport: Viewport = {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: 'cover',
+    themeColor: '#ffffff',
+}
+
 export const metadata: Metadata = {
     title: 'Decible | Text to Speech & AI Voice Generator',
     description: 'Professional AI voice generation platform. Create realistic speech, voices, and sound effects.',
@@ -16,6 +25,11 @@ export const metadata: Metadata = {
         title: 'Decible | Text to Speech & AI Voice Generator',
         description: 'Professional AI voice generation platform. Create realistic speech, voices, and sound effects.',
         type: 'website',
+    },
+    appleWebApp: {
+        capable: true,
+        statusBarStyle: 'default',
+        title: 'Decible',
     },
 }
 

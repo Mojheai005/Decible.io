@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { LandingPage } from './components/views/LandingPage';
 import { Dashboard } from './components/views/Dashboard';
 import { TextToSpeech } from './components/views/TextToSpeech';
@@ -14,6 +15,7 @@ import { GlobalPlayer } from './components/GlobalPlayer';
 import { ToastContainer } from './components/ui/Toast';
 import { NotificationDropdown } from './components/ui/NotificationDropdown';
 import { createClient } from '@/lib/supabase/client';
+import { useIsMobile } from './hooks/useIsMobile';
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState('landing');
@@ -23,6 +25,7 @@ const AppContent: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const bellButtonRef = useRef<HTMLButtonElement>(null);
   const isLoggedInRef = useRef(false);
+  const isMobile = useIsMobile(768);
 
   const { unreadCount, addNotification, showToast } = useNotifications();
 
@@ -126,27 +129,33 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="flex w-full h-screen bg-white font-sans text-gray-900">
-      <Sidebar
-        currentView={view}
-        onNavigate={setView}
-        isCollapsed={isSidebarCollapsed}
-        onLogout={handleLogout}
-      />
+      {/* Sidebar - hidden on mobile */}
+      {!isMobile && (
+        <Sidebar
+          currentView={view}
+          onNavigate={setView}
+          isCollapsed={isSidebarCollapsed}
+          onLogout={handleLogout}
+        />
+      )}
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white relative">
-        <header className="h-16 border-b border-gray-100 flex items-center justify-between px-6 bg-white shrink-0 z-20">
-          <div className="flex items-center gap-4 text-sm">
-            <button
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-black"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
+        {/* Header - simplified on mobile */}
+        <header className={`border-b border-gray-100 flex items-center justify-between bg-white shrink-0 z-20 ${isMobile ? 'h-14 px-4' : 'h-16 px-6'}`}>
+          <div className="flex items-center gap-3 text-sm">
+            {!isMobile && (
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-black"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
             <div className="flex items-center gap-2 text-gray-500">
               <span className="hover:text-black cursor-pointer font-medium" onClick={() => setView('dashboard')}>
                 {view === 'dashboard' ? 'Workspaces' : 'Decible'}
               </span>
-              {view !== 'dashboard' && (
+              {view !== 'dashboard' && !isMobile && (
                 <>
                   <span className="text-gray-300">/</span>
                   <span className="font-medium text-gray-900 capitalize">
@@ -157,17 +166,17 @@ const AppContent: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {/* Notification Bell with Dropdown */}
             <button
               ref={bellButtonRef}
               onClick={() => setShowNotifications(!showNotifications)}
-              className="p-2 hover:bg-gray-100 rounded-full text-gray-500 relative transition-colors"
+              className={`hover:bg-gray-100 rounded-full text-gray-500 relative transition-colors ${isMobile ? 'p-2.5' : 'p-2'}`}
               aria-label="Notifications"
             >
-              <Bell className="w-5 h-5" />
+              <Bell className={isMobile ? 'w-5 h-5' : 'w-5 h-5'} />
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full border-2 border-white text-[10px] font-bold text-white flex items-center justify-center">
+                <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] px-1 bg-red-500 rounded-full border-2 border-white text-[9px] font-bold text-white flex items-center justify-center">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -180,26 +189,34 @@ const AppContent: React.FC = () => {
               anchorRef={bellButtonRef}
             />
 
-            <button
-              onClick={() => setView('profile')}
-              className="w-8 h-8 bg-gradient-to-tr from-green-700 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-transparent hover:ring-gray-200 transition-all"
-              aria-label="Profile"
-            >
-              U
-            </button>
+            {!isMobile && (
+              <button
+                onClick={() => setView('profile')}
+                className="w-8 h-8 bg-gradient-to-tr from-green-700 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-transparent hover:ring-gray-200 transition-all"
+                aria-label="Profile"
+              >
+                U
+              </button>
+            )}
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto relative bg-white">
+        {/* Main content - add bottom padding on mobile for nav bar */}
+        <main className={`flex-1 overflow-y-auto relative bg-white ${isMobile ? 'pb-20' : ''}`}>
           {/* TTS is always mounted to preserve generation state across view switches */}
           <div className={baseView === 'tts' ? 'h-full' : 'hidden'}>
-            <TextToSpeech onNavigate={setView} />
+            <TextToSpeech onNavigate={setView} isMobile={isMobile} />
           </div>
           {baseView !== 'tts' && renderView()}
         </main>
 
-        <GlobalPlayer />
+        <GlobalPlayer isMobile={isMobile} />
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      {isMobile && (
+        <MobileBottomNav currentView={view} onNavigate={setView} />
+      )}
 
       {/* Toast Container */}
       <ToastContainer />

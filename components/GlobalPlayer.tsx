@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Volume1, Download, ChevronDown, X } from 'lucide-react';
+import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Volume1, Download, ChevronDown, X, Share2 } from 'lucide-react';
 import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
 import { ShaderAvatar } from './ui/ShaderAvatar';
+import { MiniWaveform } from './ui/AudioWaveform';
+import { ShareSheet } from './ui/ShareSheet';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Map voice name to shader type
@@ -11,7 +13,11 @@ const getShaderType = (name: string, category: string): 'neon' | 'fluid' | 'chro
     return shaders[hash % shaders.length];
 };
 
-export const GlobalPlayer: React.FC = () => {
+interface GlobalPlayerProps {
+    isMobile?: boolean;
+}
+
+export const GlobalPlayer: React.FC<GlobalPlayerProps> = ({ isMobile = false }) => {
     const {
         currentVoice,
         isPlaying,
@@ -29,6 +35,7 @@ export const GlobalPlayer: React.FC = () => {
     const [isHoveringProgress, setIsHoveringProgress] = useState(false);
     const [isHoveringVolume, setIsHoveringVolume] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
+    const [showShareSheet, setShowShareSheet] = useState(false);
     const progressRef = useRef<HTMLDivElement>(null);
     const volumeRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +93,123 @@ export const GlobalPlayer: React.FC = () => {
 
     const VolumeIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
 
+    // Mobile Layout - compact with waveform and share
+    if (isMobile) {
+        return (
+            <>
+                <AnimatePresence>
+                    <motion.div
+                        initial={{ y: 100, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 100, opacity: 0 }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                        className="fixed bottom-[76px] left-0 right-0 bg-white/98 backdrop-blur-xl border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 px-4 pt-3 pb-4"
+                    >
+                        {/* Progress bar at top - full width, larger touch target */}
+                        <div
+                            ref={progressRef}
+                            className="w-full h-8 flex items-center cursor-pointer mb-3 -mt-1"
+                            onTouchStart={() => setIsDragging(true)}
+                            onTouchEnd={() => setIsDragging(false)}
+                            onTouchMove={(e) => {
+                                if (!progressRef.current || !duration) return;
+                                const rect = progressRef.current.getBoundingClientRect();
+                                const touch = e.touches[0];
+                                const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+                                seek(percent * duration);
+                            }}
+                            onClick={handleProgressClick}
+                        >
+                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden relative">
+                                <motion.div
+                                    className="h-full bg-gray-900 rounded-full"
+                                    style={{ width: `${progressPercent}%` }}
+                                />
+                                {/* Thumb - always visible on mobile for touch */}
+                                <div
+                                    className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-gray-900 rounded-full shadow-lg border-2 border-white"
+                                    style={{ left: `calc(${progressPercent}% - 10px)` }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            {/* Voice Info - compact with waveform */}
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className="relative shrink-0">
+                                    <div className="w-12 h-12 rounded-xl overflow-hidden ring-2 ring-gray-100 shadow-sm">
+                                        <ShaderAvatar type={getShaderType(currentVoice.name, currentVoice.category || '')} />
+                                    </div>
+                                    {isPlaying && (
+                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
+                                            <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="overflow-hidden flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="font-bold text-gray-900 truncate text-sm">{currentVoice.name}</h4>
+                                        {isPlaying && (
+                                            <MiniWaveform isPlaying={isPlaying} className="text-green-500" />
+                                        )}
+                                    </div>
+                                    <div className="text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5">
+                                        <span className="font-medium">{formatTime(currentTime)}</span>
+                                        <span className="text-gray-300">/</span>
+                                        <span>{formatTime(duration)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Controls - larger touch targets (48px) */}
+                            <div className="flex items-center gap-0.5">
+                                <button
+                                    onClick={togglePlay}
+                                    className="w-12 h-12 rounded-full bg-gray-900 text-white flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+                                >
+                                    {isPlaying ? (
+                                        <Pause className="w-5 h-5 fill-current" />
+                                    ) : (
+                                        <Play className="w-5 h-5 fill-current ml-0.5" />
+                                    )}
+                                </button>
+
+                                <button
+                                    onClick={() => setShowShareSheet(true)}
+                                    className="w-11 h-11 flex items-center justify-center text-gray-500 active:bg-gray-100 rounded-xl transition-all"
+                                >
+                                    <Share2 className="w-5 h-5" />
+                                </button>
+
+                                <button
+                                    onClick={clearVoice}
+                                    className="w-11 h-11 flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-600 rounded-xl transition-all"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                </AnimatePresence>
+
+                {/* Share Sheet */}
+                <ShareSheet
+                    isOpen={showShareSheet}
+                    onClose={() => setShowShareSheet(false)}
+                    audioUrl={currentVoice.previewUrl}
+                    title="Share Voice"
+                    onDownload={handleDownload}
+                    onCopyLink={() => {
+                        if (currentVoice.previewUrl) {
+                            navigator.clipboard.writeText(currentVoice.previewUrl);
+                        }
+                    }}
+                />
+            </>
+        );
+    }
+
+    // Desktop Layout - original
     return (
         <AnimatePresence>
             <motion.div

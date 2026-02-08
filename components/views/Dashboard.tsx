@@ -48,14 +48,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto pb-20">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24 md:pb-20">
       {/* Header Banner - Removed Talk to AI button */}
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Good evening</h1>
+      <div className="flex items-center justify-between mb-6 md:mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Good evening</h1>
       </div>
 
       {/* Tool Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8 md:mb-12">
         {[
           { id: 'tts', icon: Mic, label: 'Text to Speech', color: 'bg-blue-100 text-blue-600', comingSoon: false },
           { id: 'vtt', icon: FileAudio, label: 'Voice to Text', color: 'bg-green-100 text-green-600', comingSoon: false },
@@ -65,17 +65,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <div
             key={i}
             onClick={() => !tool.comingSoon && handleToolClick(tool.id)}
-            className={`group relative bg-gray-50 hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-lg transition-all rounded-3xl p-6 h-48 flex flex-col items-center justify-center ${tool.comingSoon ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
+            className={`group relative bg-gray-50 hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-lg transition-all rounded-2xl md:rounded-3xl p-4 md:p-6 h-36 md:h-48 flex flex-col items-center justify-center ${tool.comingSoon ? 'cursor-default opacity-70' : 'cursor-pointer active:scale-95'}`}
           >
             {tool.comingSoon && (
-              <div className="absolute top-3 right-3 px-2 py-1 bg-gray-200 text-gray-600 text-xs font-medium rounded-full">
-                Coming Soon
+              <div className="absolute top-2 right-2 md:top-3 md:right-3 px-1.5 md:px-2 py-0.5 md:py-1 bg-gray-200 text-gray-600 text-[10px] md:text-xs font-medium rounded-full">
+                Soon
               </div>
             )}
-            <div className={`w-14 h-14 rounded-2xl ${tool.color} flex items-center justify-center mb-4 transition-transform ${!tool.comingSoon ? 'group-hover:scale-110' : ''}`}>
-              <tool.icon className="w-7 h-7" />
+            <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl ${tool.color} flex items-center justify-center mb-3 md:mb-4 transition-transform ${!tool.comingSoon ? 'group-hover:scale-110' : ''}`}>
+              <tool.icon className="w-6 h-6 md:w-7 md:h-7" />
             </div>
-            <span className="font-medium text-gray-900 text-center">{tool.label}</span>
+            <span className="font-medium text-gray-900 text-center text-sm md:text-base">{tool.label}</span>
           </div>
         ))}
       </div>
