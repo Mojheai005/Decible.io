@@ -6,6 +6,7 @@ import { useMyVoices } from '@/hooks/useMyVoices';
 import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
 import { VoiceFilters } from '@/components/modals/VoiceFilters';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface VoiceLibraryProps {
   onNavigate?: (view: string) => void;
@@ -88,19 +89,26 @@ const UseCaseCard: React.FC<{
   icon: string;
   bgColor: string;
   onClick: () => void;
-}> = ({ label, icon, bgColor, onClick }) => {
+  isMobile?: boolean;
+}> = ({ label, icon, bgColor, onClick, isMobile }) => {
   return (
     <button
       onClick={onClick}
-      className={`${bgColor} rounded-2xl p-5 text-left hover:scale-[1.02] transition-transform min-w-[200px] h-[130px] flex flex-col justify-between group shrink-0`}
+      className={`${bgColor} rounded-2xl text-left hover:scale-[1.02] active:scale-[0.98] transition-transform flex flex-col justify-between group shrink-0 ${
+        isMobile ? 'p-4 min-w-[160px] h-[100px]' : 'p-5 min-w-[200px] h-[130px]'
+      }`}
     >
-      <div className="text-3xl">{icon}</div>
+      <div className={isMobile ? 'text-2xl' : 'text-3xl'}>{icon}</div>
       <div className="flex items-center justify-between">
-        <span className="text-gray-900 font-semibold text-sm leading-tight max-w-[130px]">
+        <span className={`text-gray-900 font-semibold leading-tight ${
+          isMobile ? 'text-xs max-w-[100px]' : 'text-sm max-w-[130px]'
+        }`}>
           {label}
         </span>
-        <div className="w-8 h-8 bg-white/80 rounded-full flex items-center justify-center group-hover:bg-white transition-colors">
-          <ChevronRight className="w-4 h-4 text-gray-700" />
+        <div className={`bg-white/80 rounded-full flex items-center justify-center group-hover:bg-white transition-colors ${
+          isMobile ? 'w-6 h-6' : 'w-8 h-8'
+        }`}>
+          <ChevronRight className={isMobile ? 'w-3 h-3 text-gray-700' : 'w-4 h-4 text-gray-700'} />
         </div>
       </div>
     </button>
@@ -205,7 +213,8 @@ const VoiceRow: React.FC<{
   onPlay: (e: React.MouseEvent) => void;
   onSave: (e: React.MouseEvent) => void;
   onClick: () => void;
-}> = ({ voice, isPlaying, isLoading, isSaved, onPlay, onSave, onClick }) => {
+  isMobile?: boolean;
+}> = ({ voice, isPlaying, isLoading, isSaved, onPlay, onSave, onClick, isMobile }) => {
   // Get flag emoji based on language
   const getLanguageFlag = (lang: string) => {
     const flags: Record<string, string> = {
@@ -236,6 +245,64 @@ const VoiceRow: React.FC<{
     return count.toString();
   };
 
+  // Mobile compact layout
+  if (isMobile) {
+    return (
+      <div
+        onClick={onClick}
+        className="flex items-center gap-3 px-4 py-3 active:bg-gray-50 border-b border-gray-100 last:border-b-0 cursor-pointer transition-colors"
+      >
+        {/* Avatar */}
+        <div className="relative shrink-0">
+          <div className="w-11 h-11 rounded-xl overflow-hidden shadow-sm">
+            <ShaderAvatar type={getShaderType(voice.name, voice.category)} />
+          </div>
+          {isSaved && (
+            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+              <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+            </div>
+          )}
+        </div>
+
+        {/* Name & Info */}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-gray-900 truncate text-sm">
+            {voice.name}
+          </h3>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs">{getLanguageFlag(voice.language)}</span>
+            <span className="text-xs text-gray-500">{voice.category}</span>
+            {voice.accent && voice.accent !== 'Neutral' && (
+              <span className="text-xs text-gray-400">• {voice.accent}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Play Button */}
+        <button
+          onClick={onPlay}
+          disabled={isLoading}
+          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${
+            isLoading
+              ? 'bg-amber-100 text-amber-600'
+              : isPlaying
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+          }`}
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="w-4 h-4" />
+          ) : (
+            <Play className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  // Desktop layout
   return (
     <div
       onClick={onClick}
@@ -330,6 +397,7 @@ const VoiceRow: React.FC<{
 };
 
 export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialTab }) => {
+  const isMobile = useIsMobile();
   const voiceData = useVoices();
   const voices = voiceData.voices || [];
   const isLoading = voiceData.isLoading;
@@ -516,7 +584,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#FAFAFA] relative">
+    <div className={`h-full bg-[#FAFAFA] relative ${isMobile ? 'overflow-y-auto' : 'flex flex-col'}`}>
       {/* Filters Modal */}
       <VoiceFilters
         isOpen={showFiltersModal}
@@ -525,227 +593,342 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
         initialFilters={appliedFilters}
       />
 
-      {/* Header */}
-      <div className="px-6 py-4 bg-white border-b border-gray-200 sticky top-0 z-[100] overflow-visible">
-        {/* Row 1: Tabs & Actions */}
-        <div className="flex items-center justify-between mb-4">
-          {/* Tabs */}
-          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
-            <button
-              onClick={() => setActiveTab('explore')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'explore' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Globe className="w-4 h-4" />
-              Explore
-            </button>
-            <button
-              onClick={() => setActiveTab('latest')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'latest' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Latest
-            </button>
-            <button
-              onClick={() => setActiveTab('my-voices')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'my-voices' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              My Voices
-            </button>
-            <button
-              onClick={() => setActiveTab('default')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'default' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Default Voices
-            </button>
+      {/* Header - Desktop */}
+      {!isMobile && (
+        <div className="px-6 py-4 bg-white border-b border-gray-200 sticky top-0 z-[100] overflow-visible">
+          {/* Row 1: Tabs & Actions */}
+          <div className="flex items-center justify-between mb-4">
+            {/* Tabs */}
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+              <button
+                onClick={() => setActiveTab('explore')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'explore' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                Explore
+              </button>
+              <button
+                onClick={() => setActiveTab('latest')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'latest' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Latest
+              </button>
+              <button
+                onClick={() => setActiveTab('my-voices')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'my-voices' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                My Voices
+              </button>
+              <button
+                onClick={() => setActiveTab('default')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'default' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Default Voices
+              </button>
+            </div>
+
+            {/* Slots & Create */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center">
+                  <div className={`w-2 h-2 rounded-full ${slotsUsed > 0 ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                </div>
+                <span>{slotsUsed} / {totalSlots} slots used</span>
+              </div>
+              <button
+                onClick={() => onNavigate?.('tts')}
+                className="flex items-center gap-2 px-4 py-2.5 bg-[#0F172A] text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm"
+              >
+                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-400 to-cyan-300 flex items-center justify-center">
+                  <Plus className="w-3 h-3 text-white" />
+                </div>
+                Create a Voice
+              </button>
+            </div>
           </div>
 
-          {/* Slots & Create */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center">
-                <div className={`w-2 h-2 rounded-full ${slotsUsed > 0 ? 'bg-blue-500' : 'bg-gray-300'}`} />
-              </div>
-              <span>{slotsUsed} / {totalSlots} slots used</span>
+          {/* Row 2: Search & Filters */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search library voices..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowFiltersModal(true)}
+              className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-medium transition-all ${
+                hasActiveFilters
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50 bg-white'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              Filters
+              {hasActiveFilters && <span className="w-2 h-2 bg-blue-500 rounded-full" />}
+            </button>
+
+            <div className="relative">
+              <button
+                onClick={() => setIsSortOpen(!isSortOpen)}
+                className="p-2.5 bg-white border border-gray-200 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all"
+              >
+                <ArrowUpDown className="w-4 h-4" />
+              </button>
+
+              {isSortOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsSortOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
+                    {[
+                      { id: 'popular', label: 'Popularity' },
+                      { id: 'newest', label: 'Newest' },
+                      { id: 'alphabetical', label: 'Name (A-Z)' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => { setSortOption(opt.id as typeof sortOption); setIsSortOpen(false); }}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                          sortOption === opt.id ? 'bg-gray-50 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Language/Accent dropdowns + Categories */}
+          <div className="flex items-center gap-3 mt-4 flex-wrap pb-1">
+            {/* Language Dropdown */}
+            <div className="relative shrink-0">
+              <button
+                onClick={() => { setIsLanguageOpen(!isLanguageOpen); setIsAccentOpen(false); }}
+                className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm bg-white hover:bg-gray-50 transition-colors ${
+                  appliedFilters.language ? 'border-blue-400 text-blue-600' : 'border-gray-200 text-gray-600'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                {appliedFilters.language || 'Language'}
+                <ChevronDown className={`w-3 h-3 transition-transform ${isLanguageOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isLanguageOpen && (
+                <>
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setIsLanguageOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-[9999] py-1 max-h-60 overflow-y-auto">
+                    <button
+                      onClick={() => { setAppliedFilters(f => ({ ...f, language: undefined })); setIsLanguageOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${!appliedFilters.language ? 'font-medium text-blue-600' : 'text-gray-600'}`}
+                    >
+                      All Languages
+                    </button>
+                    {availableLanguages.map(lang => (
+                      <button
+                        key={lang}
+                        onClick={() => { setAppliedFilters(f => ({ ...f, language: lang })); setIsLanguageOpen(false); }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${appliedFilters.language === lang ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+                      >
+                        {lang}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Accent Dropdown */}
+            <div className="relative shrink-0">
+              <button
+                onClick={() => { setIsAccentOpen(!isAccentOpen); setIsLanguageOpen(false); }}
+                className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm bg-white hover:bg-gray-50 transition-colors ${
+                  appliedFilters.accent ? 'border-blue-400 text-blue-600' : 'border-gray-200 text-gray-500'
+                }`}
+              >
+                {appliedFilters.accent || 'Accent'}
+                <ChevronDown className={`w-3 h-3 transition-transform ${isAccentOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isAccentOpen && (
+                <>
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setIsAccentOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-[9999] py-1 max-h-60 overflow-y-auto">
+                    <button
+                      onClick={() => { setAppliedFilters(f => ({ ...f, accent: undefined })); setIsAccentOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${!appliedFilters.accent ? 'font-medium text-blue-600' : 'text-gray-600'}`}
+                    >
+                      All Accents
+                    </button>
+                    {availableAccents.map(accent => (
+                      <button
+                        key={accent}
+                        onClick={() => { setAppliedFilters(f => ({ ...f, accent: accent })); setIsAccentOpen(false); }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${appliedFilters.accent === accent ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+                      >
+                        {accent}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="h-6 w-px bg-gray-200 shrink-0" />
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                  selectedCategory === cat.id
+                    ? 'bg-gray-900 text-white'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white'
+                }`}
+              >
+                <cat.icon className="w-4 h-4" />
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Header - Mobile — clean, spacious, scrolls with content */}
+      {isMobile && (
+        <div className="bg-white border-b border-gray-200">
+          {/* Row 1: Search + Filter button */}
+          <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search voices..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-9 py-2.5 bg-gray-100 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 active:text-gray-700 rounded-full"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <button
-              onClick={() => onNavigate?.('tts')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#0F172A] text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm"
+              onClick={() => setShowFiltersModal(true)}
+              className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                hasActiveFilters ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 active:bg-gray-200'
+              }`}
             >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-400 to-cyan-300 flex items-center justify-center">
-                <Plus className="w-3 h-3 text-white" />
+              <Filter className="w-4.5 h-4.5" />
+            </button>
+          </div>
+
+          {/* Row 2: Tabs — single scrollable row merging tabs + categories */}
+          <div className="px-4 pb-3">
+            <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {[
+                { id: 'explore', label: 'Explore' },
+                { id: 'latest', label: 'Latest' },
+                { id: 'my-voices', label: 'My Voices' },
+                { id: 'default', label: 'Default' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                  className={`px-3.5 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-gray-100 text-gray-500 active:bg-gray-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+
+              {/* Divider dot */}
+              <div className="flex items-center px-1 shrink-0">
+                <div className="w-1 h-1 rounded-full bg-gray-300" />
               </div>
-              Create a Voice
-            </button>
+
+              {/* Category pills inline */}
+              {CATEGORIES.filter(c => c.id !== '').map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium whitespace-nowrap transition-all ${
+                    selectedCategory === cat.id
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-gray-100 text-gray-500 active:bg-gray-200'
+                  }`}
+                >
+                  <cat.icon className="w-3.5 h-3.5" />
+                  {cat.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Active Filters — compact removable pills */}
+          {(appliedFilters.language || appliedFilters.accent || appliedFilters.gender) && (
+            <div className="px-4 pb-3 flex gap-1.5 flex-wrap">
+              {appliedFilters.language && (
+                <button
+                  onClick={() => setAppliedFilters(f => ({ ...f, language: undefined }))}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-gray-900 text-white rounded-full text-xs font-medium"
+                >
+                  {appliedFilters.language}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {appliedFilters.accent && (
+                <button
+                  onClick={() => setAppliedFilters(f => ({ ...f, accent: undefined }))}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-gray-900 text-white rounded-full text-xs font-medium"
+                >
+                  {appliedFilters.accent}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {appliedFilters.gender && (
+                <button
+                  onClick={() => setAppliedFilters(f => ({ ...f, gender: undefined }))}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-gray-900 text-white rounded-full text-xs font-medium"
+                >
+                  {appliedFilters.gender}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* Row 2: Search & Filters */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search library voices..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          <button
-            onClick={() => setShowFiltersModal(true)}
-            className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-medium transition-all ${
-              hasActiveFilters
-                ? 'border-blue-500 text-blue-600 bg-blue-50'
-                : 'border-gray-200 text-gray-700 hover:bg-gray-50 bg-white'
-            }`}
-          >
-            <Filter className="w-4 h-4" />
-            Filters
-            {hasActiveFilters && <span className="w-2 h-2 bg-blue-500 rounded-full" />}
-          </button>
-
-          <div className="relative">
-            <button
-              onClick={() => setIsSortOpen(!isSortOpen)}
-              className="p-2.5 bg-white border border-gray-200 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all"
-            >
-              <ArrowUpDown className="w-4 h-4" />
-            </button>
-
-            {isSortOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsSortOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
-                  {[
-                    { id: 'popular', label: 'Popularity' },
-                    { id: 'newest', label: 'Newest' },
-                    { id: 'alphabetical', label: 'Name (A-Z)' }
-                  ].map((opt) => (
-                    <button
-                      key={opt.id}
-                      onClick={() => { setSortOption(opt.id as typeof sortOption); setIsSortOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                        sortOption === opt.id ? 'bg-gray-50 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Row 3: Language/Accent dropdowns + YOUR ORIGINAL CATEGORIES */}
-        <div className="flex items-center gap-3 mt-4 flex-wrap pb-1">
-          {/* Language Dropdown */}
-          <div className="relative shrink-0">
-            <button
-              onClick={() => { setIsLanguageOpen(!isLanguageOpen); setIsAccentOpen(false); }}
-              className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm bg-white hover:bg-gray-50 transition-colors ${
-                appliedFilters.language ? 'border-blue-400 text-blue-600' : 'border-gray-200 text-gray-600'
-              }`}
-            >
-              <Globe className="w-4 h-4" />
-              {appliedFilters.language || 'Language'}
-              <ChevronDown className={`w-3 h-3 transition-transform ${isLanguageOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isLanguageOpen && (
-              <>
-                <div className="fixed inset-0 z-[9998]" onClick={() => setIsLanguageOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-[9999] py-1 max-h-60 overflow-y-auto">
-                  <button
-                    onClick={() => { setAppliedFilters(f => ({ ...f, language: undefined })); setIsLanguageOpen(false); }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${!appliedFilters.language ? 'font-medium text-blue-600' : 'text-gray-600'}`}
-                  >
-                    All Languages
-                  </button>
-                  {availableLanguages.map(lang => (
-                    <button
-                      key={lang}
-                      onClick={() => { setAppliedFilters(f => ({ ...f, language: lang })); setIsLanguageOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${appliedFilters.language === lang ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-600'}`}
-                    >
-                      {lang}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Accent Dropdown */}
-          <div className="relative shrink-0">
-            <button
-              onClick={() => { setIsAccentOpen(!isAccentOpen); setIsLanguageOpen(false); }}
-              className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm bg-white hover:bg-gray-50 transition-colors ${
-                appliedFilters.accent ? 'border-blue-400 text-blue-600' : 'border-gray-200 text-gray-500'
-              }`}
-            >
-              {appliedFilters.accent || 'Accent'}
-              <ChevronDown className={`w-3 h-3 transition-transform ${isAccentOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isAccentOpen && (
-              <>
-                <div className="fixed inset-0 z-[9998]" onClick={() => setIsAccentOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-[9999] py-1 max-h-60 overflow-y-auto">
-                  <button
-                    onClick={() => { setAppliedFilters(f => ({ ...f, accent: undefined })); setIsAccentOpen(false); }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${!appliedFilters.accent ? 'font-medium text-blue-600' : 'text-gray-600'}`}
-                  >
-                    All Accents
-                  </button>
-                  {availableAccents.map(accent => (
-                    <button
-                      key={accent}
-                      onClick={() => { setAppliedFilters(f => ({ ...f, accent: accent })); setIsAccentOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${appliedFilters.accent === accent ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-600'}`}
-                    >
-                      {accent}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="h-6 w-px bg-gray-200 shrink-0" />
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all shrink-0 ${
-                selectedCategory === cat.id
-                  ? 'bg-gray-900 text-white'
-                  : 'border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white'
-              }`}
-            >
-              <cat.icon className="w-4 h-4" />
-              {cat.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-8">
+      <div className={`space-y-8 ${isMobile ? 'p-4 pb-32' : 'flex-1 overflow-y-auto p-6'}`}>
         {/* Trending Voices Section - Hide when filters are active */}
         {!searchQuery && !selectedCategory && !hasActiveFilters && activeTab === 'explore' && trendingVoices.length > 0 && (
           <section>
@@ -753,7 +936,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
               <h2 className="text-lg font-bold text-gray-900">Trending voices</h2>
               <ChevronRight className="w-5 h-5 text-gray-400" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
               {isLoading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
@@ -816,6 +999,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
                   icon={useCase.icon}
                   bgColor={useCase.bgColor}
                   onClick={() => handleUseCaseClick(useCase.searchTerm)}
+                  isMobile={isMobile}
                 />
               ))}
             </div>
@@ -870,18 +1054,24 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
             </div>
           ) : (
             <>
-              {/* List Header */}
-              <div className="hidden md:flex items-center gap-4 px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50 rounded-t-xl border border-gray-200">
-                <div className="w-10 shrink-0" /> {/* Avatar space */}
-                <div className="flex-1">Name</div>
-                <div className="hidden md:block min-w-[140px]">Language</div>
-                <div className="hidden lg:block min-w-[120px]">Category</div>
-                <div className="hidden lg:block min-w-[70px] text-right">Usage</div>
-                <div className="w-20 text-center">Actions</div>
-              </div>
+              {/* List Header - Desktop only */}
+              {!isMobile && (
+                <div className="hidden md:flex items-center gap-4 px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50 rounded-t-xl border border-gray-200">
+                  <div className="w-10 shrink-0" /> {/* Avatar space */}
+                  <div className="flex-1">Name</div>
+                  <div className="hidden md:block min-w-[140px]">Language</div>
+                  <div className="hidden lg:block min-w-[120px]">Category</div>
+                  <div className="hidden lg:block min-w-[70px] text-right">Usage</div>
+                  <div className="w-20 text-center">Actions</div>
+                </div>
+              )}
 
               {/* Voice Rows */}
-              <div className="bg-white rounded-b-xl md:rounded-t-none rounded-xl border border-gray-200 md:border-t-0 overflow-hidden">
+              <div className={`bg-white overflow-hidden ${
+                isMobile
+                  ? 'rounded-2xl border border-gray-200'
+                  : 'rounded-b-xl md:rounded-t-none rounded-xl border border-gray-200 md:border-t-0'
+              }`}>
                 {displayedVoices.map((voice) => (
                   <VoiceRow
                     key={voice.id}
@@ -892,6 +1082,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
                     onPlay={(e) => handlePlayVoice(voice, e)}
                     onSave={(e) => handleToggleSave(voice, e)}
                     onClick={() => playVoice(voice)}
+                    isMobile={isMobile}
                   />
                 ))}
               </div>

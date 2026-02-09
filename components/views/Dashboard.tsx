@@ -1,8 +1,11 @@
 import React from 'react';
-import { Mic, FileAudio, Wand2, Music, ArrowRight, Loader2 } from 'lucide-react';
+import { Mic, FileAudio, Wand2, Music, ArrowRight, Loader2, Crown, Check, Star, AlertTriangle, Zap } from 'lucide-react';
 import { ShaderAvatar, ShaderType } from '../ui/ShaderAvatar';
 import { useVoices } from '@/hooks/useVoices';
 import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import DecibleLogo from '../DecibleLogo';
 
 interface DashboardProps {
   onNavigate?: (view: string) => void;
@@ -16,8 +19,11 @@ const getShaderType = (name: string, category: string): ShaderType => {
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+  const isMobile = useIsMobile();
   const { voices, isLoading, error } = useVoices();
   const { playVoice } = useGlobalAudio();
+  const { profile } = useUserProfile();
+  const isFreePlan = !profile?.plan || profile.plan === 'free';
 
   // Get first 3 voices for display
   const latestVoices = voices.slice(0, 3).map(voice => ({
@@ -49,10 +55,102 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   return (
     <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24 md:pb-20">
-      {/* Header Banner - Removed Talk to AI button */}
-      <div className="flex items-center justify-between mb-6 md:mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Good evening</h1>
+      {/* Welcome Header */}
+      <div className="mb-6 md:mb-8">
+        {isMobile ? (
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-gray-900 to-gray-700 rounded-2xl flex items-center justify-center shadow-lg">
+              <DecibleLogo size={28} className="text-white" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 font-medium">Welcome to</p>
+              <h1 className="text-xl font-bold text-gray-900">Decible Studio</h1>
+            </div>
+          </div>
+        ) : (
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Welcome to Decible</h1>
+        )}
       </div>
+
+      {/* Upgrade Banner - Premium minimal dark design */}
+      {isFreePlan && (
+        <div
+          onClick={() => onNavigate?.('subscription')}
+          className={`bg-gray-900 text-white rounded-2xl cursor-pointer active:scale-[0.99] transition-all hover:bg-gray-800 ${
+            isMobile ? 'p-5 mb-6' : 'p-6 mb-8'
+          }`}
+        >
+          <div className={`flex ${isMobile ? 'flex-col gap-4' : 'items-center justify-between'}`}>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown className="w-5 h-5 text-amber-400" />
+                <span className="text-sm text-amber-400 font-semibold">Upgrade Your Plan</span>
+              </div>
+              <h3 className={`font-bold text-white ${isMobile ? 'text-lg' : 'text-xl'}`}>
+                Scale Your Content Creation
+              </h3>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-1.5 text-gray-400 text-sm">
+                  <Check className="w-4 h-4 text-green-400" />
+                  <span>60+ videos/mo</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-gray-400 text-sm">
+                  <Check className="w-4 h-4 text-green-400" />
+                  <span>Premium voices</span>
+                </div>
+                <div className="hidden md:flex items-center gap-1.5 text-gray-400 text-sm">
+                  <Check className="w-4 h-4 text-green-400" />
+                  <span>API access</span>
+                </div>
+              </div>
+            </div>
+            <div className={isMobile ? 'w-full' : 'shrink-0'}>
+              <button className={`flex items-center justify-center gap-2 bg-white text-gray-900 font-bold rounded-xl hover:bg-gray-100 transition-colors ${
+                isMobile ? 'w-full py-3 text-sm' : 'px-6 py-3 text-sm'
+              }`}>
+                View Plans
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/10">
+            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+            <span className="text-sm text-gray-400">Join 4,200+ YouTube creators using Decible</span>
+          </div>
+        </div>
+      )}
+
+      {/* Low Credits Warning — shows for any user when credits < 20% */}
+      {(() => {
+        const remaining = profile?.remainingCredits ?? 0;
+        const total = profile?.totalCredits ?? 1;
+        const pct = total > 0 ? (remaining / total) * 100 : 100;
+        if (pct > 20 || isFreePlan) return null; // Free plan already sees the upgrade banner
+
+        return (
+          <div
+            onClick={() => onNavigate?.('subscription')}
+            className={`bg-gradient-to-r from-red-50 to-orange-50 border border-red-200/50 rounded-2xl cursor-pointer active:scale-[0.99] transition-all ${
+              isMobile ? 'p-4 mb-5' : 'p-5 mb-6'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-red-900 text-sm">Credits Running Low</h4>
+                <p className="text-red-700/70 text-xs mt-0.5">
+                  {remaining.toLocaleString()} credits remaining — top up or upgrade to keep creating
+                </p>
+              </div>
+              <div className="shrink-0">
+                <Zap className="w-5 h-5 text-red-400" />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tool Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8 md:mb-12">

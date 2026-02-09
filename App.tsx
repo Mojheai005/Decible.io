@@ -8,7 +8,9 @@ import { VoiceLibrary } from './components/views/VoiceLibrary';
 import { Profile } from './components/views/Profile';
 import { Subscription } from './components/views/Subscription';
 import { HelpCenter } from './components/views/HelpCenter';
-import { Bell, Menu, FileAudio } from 'lucide-react';
+import { Bell, Menu, FileAudio, Coins, HelpCircle } from 'lucide-react';
+import DecibleLogo from './components/DecibleLogo';
+import { useUserProfile } from './src/hooks/useUserProfile';
 import { AudioProvider } from './src/contexts/GlobalAudioContext';
 import { NotificationProvider, useNotifications } from './src/contexts/NotificationContext';
 import { GlobalPlayer } from './components/GlobalPlayer';
@@ -28,6 +30,7 @@ const AppContent: React.FC = () => {
   const isMobile = useIsMobile(768);
 
   const { unreadCount, addNotification, showToast } = useNotifications();
+  const { profile } = useUserProfile();
 
   // Keep ref in sync with state to avoid stale closures
   useEffect(() => { isLoggedInRef.current = isLoggedIn; }, [isLoggedIn]);
@@ -151,22 +154,80 @@ const AppContent: React.FC = () => {
                 <Menu className="w-5 h-5" />
               </button>
             )}
-            <div className="flex items-center gap-2 text-gray-500">
-              <span className="hover:text-black cursor-pointer font-medium" onClick={() => setView('dashboard')}>
-                {view === 'dashboard' ? 'Workspaces' : 'Decible'}
-              </span>
-              {view !== 'dashboard' && !isMobile && (
-                <>
-                  <span className="text-gray-300">/</span>
-                  <span className="font-medium text-gray-900 capitalize">
-                    {view === 'tts' ? 'Text to Speech' : view === 'library' || view === 'voice-creator' ? 'Voice Library' : view === 'subscription' ? 'Subscription' : view.replace(/-/g, ' ')}
-                  </span>
-                </>
-              )}
-            </div>
+            {/* Mobile: Show logo + app name */}
+            {isMobile ? (
+              <button
+                onClick={() => setView('dashboard')}
+                className="flex items-center gap-2"
+              >
+                <DecibleLogo size={28} className="text-gray-900" />
+                <span className="font-bold text-gray-900 text-base">Decible</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 text-gray-500">
+                <span className="hover:text-black cursor-pointer font-medium" onClick={() => setView('dashboard')}>
+                  {view === 'dashboard' ? 'Workspaces' : 'Decible'}
+                </span>
+                {view !== 'dashboard' && (
+                  <>
+                    <span className="text-gray-300">/</span>
+                    <span className="font-medium text-gray-900 capitalize">
+                      {view === 'tts' ? 'Text to Speech' : view === 'library' || view === 'voice-creator' ? 'Voice Library' : view === 'subscription' ? 'Subscription' : view.replace(/-/g, ' ')}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Help/Support - Mobile only */}
+            {isMobile && (
+              <button
+                onClick={() => setView('help')}
+                className="p-2.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                aria-label="Help & Support"
+              >
+                <HelpCircle className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Credits Indicator Pill — color-coded by remaining % */}
+            {(() => {
+              const remaining = profile?.remainingCredits ?? 0;
+              const total = profile?.totalCredits ?? 1;
+              const pct = total > 0 ? (remaining / total) * 100 : 100;
+              const isLow = pct <= 20;
+              const isMedium = pct > 20 && pct <= 50;
+
+              const pillBg = isLow
+                ? 'bg-gradient-to-r from-red-50 to-red-100 border-red-200/60'
+                : isMedium
+                  ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200/60'
+                  : 'bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200/60';
+              const iconColor = isLow ? 'text-red-500' : isMedium ? 'text-amber-600' : 'text-emerald-600';
+              const textColor = isLow ? 'text-red-700' : isMedium ? 'text-amber-700' : 'text-emerald-700';
+
+              return (
+                <button
+                  onClick={() => setView('subscription')}
+                  className={`flex items-center gap-1.5 border rounded-full transition-all hover:shadow-sm active:scale-95 ${pillBg} ${
+                    isMobile ? 'px-2.5 py-1.5' : 'px-3 py-1.5'
+                  }`}
+                >
+                  <Coins className={`${iconColor} ${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                  <span className={`font-semibold ${textColor} ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                    {remaining > 0 ? remaining.toLocaleString() : '0'}
+                  </span>
+                  {isLow && (
+                    <span className={`bg-red-500 text-white font-bold rounded-full ${isMobile ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-1.5 py-0.5'}`}>
+                      Low
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
             {/* Notification Bell with Dropdown */}
             <button
               ref={bellButtonRef}
@@ -192,10 +253,10 @@ const AppContent: React.FC = () => {
             {!isMobile && (
               <button
                 onClick={() => setView('profile')}
-                className="w-8 h-8 bg-gradient-to-tr from-green-700 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-transparent hover:ring-gray-200 transition-all"
+                className="w-8 h-8 bg-gradient-to-tr from-gray-800 to-gray-700 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-transparent hover:ring-gray-200 transition-all"
                 aria-label="Profile"
               >
-                U
+                {profile?.name ? profile.name.charAt(0).toUpperCase() : profile?.email ? profile.email.charAt(0).toUpperCase() : '?'}
               </button>
             )}
           </div>

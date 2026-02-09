@@ -237,6 +237,16 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
 
                 // Trigger profile refetch across all components (sidebar, etc.)
                 window.dispatchEvent(new Event('credits-updated'));
+
+                // Contextual upgrade nudge — show when remaining credits get low
+                const creditsLeft = (profile?.remainingCredits ?? 50000) - validation.sanitized.length;
+                const totalCredits = profile?.totalCredits ?? 1;
+                const isOnFreePlan = !profile?.plan || profile.plan === 'free';
+                if (creditsLeft > 0 && creditsLeft / totalCredits < 0.25 && isOnFreePlan) {
+                  setTimeout(() => {
+                    showToast(`${creditsLeft.toLocaleString()} credits left — upgrade for 30x more!`, 'warning', 5000);
+                  }, 3000);
+                }
             } else {
                 showToast('Generation failed. Please try again.', 'error');
             }
@@ -342,8 +352,8 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
     const creditsRemaining = profile?.remainingCredits ?? 50000;
     const formattedCredits = creditsRemaining.toLocaleString();
 
-    // Settings Panel Content - reusable for both mobile and desktop
-    const SettingsContent = () => (
+    // Settings Panel Content - rendered as function call (NOT <Component />) to avoid remount on parent re-render
+    const settingsContent = () => (
         <div className={`space-y-6 ${isMobile ? 'p-4' : 'p-8 space-y-8'}`}>
             {/* Voice Selector */}
             <div className="space-y-3">
@@ -377,12 +387,12 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                     label="Speed"
                     value={speed}
                     onChange={setSpeed}
-                    min={0.7}
-                    max={1.2}
+                    min={0.5}
+                    max={2.0}
                     step={0.01}
                     leftLabel="Slower"
                     rightLabel="Faster"
-                    valueFormatter={(val) => val.toFixed(2)}
+                    valueFormatter={(val) => `${val.toFixed(2)}x`}
                 />
 
                 <Slider
@@ -391,7 +401,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                     onChange={setStability}
                     min={0}
                     max={100}
-                    step={1}
+                    step={0.1}
                     leftLabel="More variable"
                     rightLabel="More stable"
                 />
@@ -402,7 +412,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                     onChange={setSimilarity}
                     min={0}
                     max={100}
-                    step={1}
+                    step={0.1}
                     leftLabel="Low"
                     rightLabel="High"
                 />
@@ -413,7 +423,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                     onChange={setStyle}
                     min={0}
                     max={100}
-                    step={1}
+                    step={0.1}
                     leftLabel="None"
                     rightLabel="Exaggerated"
                 />
@@ -475,8 +485,8 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
         </div>
     );
 
-    // History Panel Content - reusable for both mobile and desktop
-    const HistoryContent = () => (
+    // History Panel Content - rendered as function call (NOT <Component />) to avoid remount on parent re-render
+    const historyContent = () => (
         <div className="flex flex-col h-full">
             <div className={`border-b border-gray-100 sticky top-0 bg-white z-10 ${isMobile ? 'p-3' : 'p-4'}`}>
                 <div className="relative">
@@ -616,8 +626,8 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
 
                     {/* CONTENT AREA */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
-                        {activeTab === 'settings' && <SettingsContent />}
-                        {activeTab === 'history' && <HistoryContent />}
+                        {activeTab === 'settings' && settingsContent()}
+                        {activeTab === 'history' && historyContent()}
                     </div>
                 </div>
                 )}
@@ -667,8 +677,8 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                             </div>
                             {/* Content */}
                             <div className="flex-1 overflow-y-auto">
-                                {activeTab === 'settings' && <SettingsContent />}
-                                {activeTab === 'history' && <HistoryContent />}
+                                {activeTab === 'settings' && settingsContent()}
+                                {activeTab === 'history' && historyContent()}
                             </div>
                         </motion.div>
                     </>
