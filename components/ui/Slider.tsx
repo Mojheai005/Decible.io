@@ -213,8 +213,8 @@ Slider.displayName = 'Slider';
 export const SpeedSlider: React.FC<Omit<SliderProps, 'min' | 'max' | 'step' | 'valueFormatter'>> = (props) => (
   <Slider
     {...props}
-    min={0.5}
-    max={2.0}
+    min={0.7}
+    max={1.2}
     step={0.01}
     valueFormatter={(val) => `${val.toFixed(2)}x`}
     leftLabel="Slower"

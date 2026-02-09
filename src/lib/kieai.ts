@@ -61,15 +61,18 @@ async function createTask(params: KieAITTSParams): Promise<string> {
 
     const settings = params.voice_settings || {}
 
+    // Clamp values to Kie.ai / ElevenLabs v2.5 valid ranges
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
     const requestBody = {
         model: 'elevenlabs/text-to-speech-turbo-2-5',
         input: {
             text: params.text,
             voice: params.voice,
-            stability: settings.stability ?? 0.5,
-            similarity_boost: settings.similarity_boost ?? 0.75,
-            style: settings.style ?? 0,
-            speed: settings.speed ?? 1.0,
+            stability: clamp(settings.stability ?? 0.5, 0, 1),
+            similarity_boost: clamp(settings.similarity_boost ?? 0.75, 0, 1),
+            style: clamp(settings.style ?? 0, 0, 1),
+            speed: clamp(settings.speed ?? 1.0, 0.7, 1.2),
             ...(params.language_code && { language_code: params.language_code }),
         },
     }
