@@ -84,6 +84,11 @@ export function usePayment(): UsePaymentResult {
 
             const orderData = await orderResponse.json()
 
+            // Debug: log DB insert errors from server
+            if (orderData._dbInsertError) {
+                console.error('[Payment] DB insert error:', orderData._dbInsertError)
+            }
+
             // Open Razorpay checkout
             const options: RazorpayOptions = {
                 key: orderData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',

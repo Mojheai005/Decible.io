@@ -98,10 +98,11 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            // Use full price (first-month promo handled separately if needed)
-            amount = getEffectivePrice(plan, false);
+            // First-month promo: new users on free tier get discounted Creator price
+            const isFirstMonth = userProfile.subscription_tier === 'free' && plan.id === 'creator';
+            amount = getEffectivePrice(plan, isFirstMonth);
             credits = plan.credits;
-            description = `${plan.displayName} Plan`;
+            description = `${plan.displayName} Plan${isFirstMonth ? ' (First Month Special)' : ''}`;
 
         } else if (type === 'topup') {
             if (!topupPackageId) {
@@ -162,40 +163,27 @@ export async function POST(request: NextRequest) {
         });
 
         // 6. Store pending order in database
-        // Use only core columns that exist in all schema versions
-        const orderRecord: Record<string, unknown> = {
+        const rawIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip');
+        const clientIp = rawIp ? rawIp.split(',')[0].trim() : null;
+
+        const { error: insertError } = await admin.from('payment_orders').insert({
             id: order.id,
             user_id: user.id,
-            plan_id: planId || orderType,  // NOT NULL in some schemas
+            order_type: orderType,
+            plan_id: planId || null,
+            topup_package_id: topupPackageId || null,
             amount: amount,
             currency: 'INR',
             credits: credits,
             status: 'created',
             razorpay_order_id: order.id,
-        };
-
-        // Try inserting with extended columns first, fall back to core-only
-        let { error: insertError } = await admin.from('payment_orders').insert({
-            ...orderRecord,
-            order_type: orderType,
-            topup_package_id: topupPackageId || null,
-            ip_address: (() => {
-                const rawIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip');
-                return rawIp ? rawIp.split(',')[0].trim() : null;
-            })(),
+            ip_address: clientIp,
             user_agent: request.headers.get('user-agent'),
         });
 
-        // If extended insert failed (missing columns), try core-only insert
         if (insertError) {
-            console.warn('[Payment] Extended insert failed, trying core columns:', insertError.message);
-            ({ error: insertError } = await admin.from('payment_orders').insert(orderRecord));
+            console.error('[Payment] DB insert error:', JSON.stringify(insertError));
         }
-
-        if (insertError) {
-            console.error('[Payment] Failed to insert order into DB:', insertError);
-        }
-
 
         // 7. Return order details
         return NextResponse.json({
@@ -210,6 +198,8 @@ export async function POST(request: NextRequest) {
                 email: user.email,
                 name: (profile as { name?: string })?.name || '',
             },
+            // Debug: include insert error so we can diagnose
+            _dbInsertError: insertError ? insertError.message : null,
         });
 
     } catch (error) {
