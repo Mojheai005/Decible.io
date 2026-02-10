@@ -64,6 +64,9 @@ export const metadata: Metadata = {
             'max-snippet': -1,
         },
     },
+    verification: {
+        google: 'MzXquPhdvchBPGoi4jBNjPIRF-mhtfnuIuAAk3Tktbw',
+    },
     alternates: {
         canonical: 'https://www.decible.io',
     },
