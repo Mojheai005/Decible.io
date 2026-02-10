@@ -51,18 +51,19 @@ export async function POST(request: NextRequest) {
         const admin = getAdminClient();
         const { data: profile, error: profileError } = await admin
             .from('user_profiles')
-            .select('subscription_tier, is_first_month')
+            .select('subscription_tier')
             .eq('id', user.id)
             .single();
 
         if (profileError || !profile) {
+            console.error('[Payment] Profile lookup failed:', profileError);
             return NextResponse.json(
                 { error: 'User profile not found' },
                 { status: 404 }
             );
         }
 
-        const userProfile = profile as { subscription_tier?: string; is_first_month?: boolean };
+        const userProfile = profile as { subscription_tier?: string };
 
         // 3. Parse request body
         const body = await request.json() as CreateOrderRequest;
@@ -97,11 +98,10 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            // Check if this is first month for creator plan promo
-            const isFirstMonth = !!(userProfile.is_first_month && plan.id === 'creator');
-            amount = getEffectivePrice(plan, isFirstMonth);
+            // Use full price (first-month promo handled separately if needed)
+            amount = getEffectivePrice(plan, false);
             credits = plan.credits;
-            description = `${plan.displayName} Plan${isFirstMonth ? ' (First Month Special)' : ''}`;
+            description = `${plan.displayName} Plan`;
 
         } else if (type === 'topup') {
             if (!topupPackageId) {
@@ -162,20 +162,39 @@ export async function POST(request: NextRequest) {
         });
 
         // 6. Store pending order in database
-        await admin.from('payment_orders').insert({
+        // Use only core columns that exist in all schema versions
+        const orderRecord: Record<string, unknown> = {
             id: order.id,
             user_id: user.id,
-            order_type: orderType,
-            plan_id: planId || null,
-            topup_package_id: topupPackageId || null,
+            plan_id: planId || orderType,  // NOT NULL in some schemas
             amount: amount,
             currency: 'INR',
             credits: credits,
             status: 'created',
             razorpay_order_id: order.id,
-            ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
+        };
+
+        // Try inserting with extended columns first, fall back to core-only
+        let { error: insertError } = await admin.from('payment_orders').insert({
+            ...orderRecord,
+            order_type: orderType,
+            topup_package_id: topupPackageId || null,
+            ip_address: (() => {
+                const rawIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip');
+                return rawIp ? rawIp.split(',')[0].trim() : null;
+            })(),
             user_agent: request.headers.get('user-agent'),
         });
+
+        // If extended insert failed (missing columns), try core-only insert
+        if (insertError) {
+            console.warn('[Payment] Extended insert failed, trying core columns:', insertError.message);
+            ({ error: insertError } = await admin.from('payment_orders').insert(orderRecord));
+        }
+
+        if (insertError) {
+            console.error('[Payment] Failed to insert order into DB:', insertError);
+        }
 
 
         // 7. Return order details
@@ -194,9 +213,12 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error) {
-        console.error('Payment order creation error:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[Payment] Order creation error:', message, error);
         return NextResponse.json(
-            { error: 'Failed to create payment order' },
+            { error: message.includes('Razorpay') || message.includes('credentials')
+                ? 'Payment gateway not configured. Please contact support.'
+                : `Failed to create payment order: ${message}` },
             { status: 500 }
         );
     }
@@ -216,14 +238,14 @@ export async function GET(request: NextRequest) {
             const admin = getAdminClient();
             const { data: profile } = await admin
                 .from('user_profiles')
-                .select('subscription_tier, is_first_month')
+                .select('subscription_tier')
                 .eq('id', user.id)
                 .single();
 
             if (profile) {
-                const p = profile as { subscription_tier?: string; is_first_month?: boolean };
+                const p = profile as { subscription_tier?: string };
                 userTier = p.subscription_tier || 'free';
-                isFirstMonth = p.is_first_month ?? true;
+                isFirstMonth = true; // Default to true for first-time users
             }
         }
 

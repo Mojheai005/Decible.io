@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
                         await admin.rpc('add_credits', {
                             p_user_id: userId,
                             p_amount: credits,
+                            p_type: 'topup',
                             p_description: 'Plan purchase (webhook)',
                             p_reference_id: payment.id,
                         });
