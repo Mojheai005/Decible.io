@@ -198,8 +198,7 @@ export async function POST(request: NextRequest) {
                 email: user.email,
                 name: (profile as { name?: string })?.name || '',
             },
-            // Debug: include insert error so we can diagnose
-            _dbInsertError: insertError ? insertError.message : null,
+            _dbError: insertError ? insertError.message : null,
         });
 
     } catch (error) {

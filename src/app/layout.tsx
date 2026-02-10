@@ -20,7 +20,12 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
     title: 'Decible | Text to Speech & AI Voice Generator',
     description: 'Professional AI voice generation platform. Create realistic speech, voices, and sound effects.',
-    icons: { icon: '/favicon.svg' },
+    icons: {
+        icon: [
+            { url: '/favicon.svg', type: 'image/svg+xml' },
+        ],
+        apple: '/favicon.svg',
+    },
     openGraph: {
         title: 'Decible | Text to Speech & AI Voice Generator',
         description: 'Professional AI voice generation platform. Create realistic speech, voices, and sound effects.',
