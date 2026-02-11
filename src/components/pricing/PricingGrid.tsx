@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { PricingCard } from './PricingCard';
 import { TopupSection } from './TopupSection';
-import { SUBSCRIPTION_PLANS, TOPUP_PACKAGES } from '@/lib/pricing';
+import { SUBSCRIPTION_PLANS, TOPUP_PACKAGES, Currency } from '@/lib/pricing';
 
 interface PricingGridProps {
     currentTier?: string;
@@ -12,6 +12,7 @@ interface PricingGridProps {
     onSelectTopup?: (packageId: string) => void;
     loading?: boolean;
     showTopups?: boolean;
+    currency?: Currency;
 }
 
 export function PricingGrid({
@@ -21,6 +22,7 @@ export function PricingGrid({
     onSelectTopup,
     loading = false,
     showTopups = true,
+    currency = 'INR',
 }: PricingGridProps) {
     const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
@@ -55,6 +57,7 @@ export function PricingGrid({
                         isFirstMonth={isFirstMonth}
                         onSelect={handleSelectPlan}
                         loading={loading && selectedPlan === plan.id}
+                        currency={currency}
                     />
                 ))}
             </div>

@@ -3,8 +3,9 @@
 import React, { useState } from 'react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { usePayment } from '@/hooks/usePayment';
+import { useCurrency } from '@/hooks/useCurrency';
 import { Loader2, Check, Crown, ArrowRight, Star, Users, Sparkles, Zap, Shield } from 'lucide-react';
-import { SUBSCRIPTION_PLANS } from '@/lib/pricing';
+import { SUBSCRIPTION_PLANS, getCurrencySymbol, getPlanPrice, getPlanFirstMonthPrice } from '@/lib/pricing';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface SubscriptionProps {
@@ -15,6 +16,8 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
     const isMobile = useIsMobile();
     const { profile, isLoading } = useUserProfile();
     const { initiatePayment, isProcessing, processingPlanId, error } = usePayment();
+    const currency = useCurrency();
+    const sym = getCurrencySymbol(currency);
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
     if (isLoading) {
@@ -127,11 +130,13 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
                 {SUBSCRIPTION_PLANS.filter(p => p.id !== 'free').map((plan) => {
                     const isCurrentPlan = plan.id === currentTier;
                     const canUpgrade = SUBSCRIPTION_PLANS.findIndex(p => p.id === plan.id) > currentPlanIndex;
-                    const priceRupees = plan.priceMonthly / 100;
-                    const yearlyPrice = Math.floor(priceRupees * 0.8);
-                    const displayPrice = billingPeriod === 'yearly' ? yearlyPrice : priceRupees;
+                    const monthlyPrice = getPlanPrice(plan, currency) / 100;
+                    const firstMonthPrice = getPlanFirstMonthPrice(plan, currency);
+                    const firstMonthAmount = firstMonthPrice ? firstMonthPrice / 100 : null;
+                    const yearlyPrice = Math.floor(monthlyPrice * 0.8);
                     const isPopular = plan.id === 'creator';
                     const videosPerMonth = getVideosPerMonth(plan.credits);
+                    const hasPromo = !!firstMonthAmount && !isCurrentPlan && canUpgrade && billingPeriod === 'monthly';
 
                     return (
                         <div
@@ -165,26 +170,43 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
 
                             {/* Price */}
                             <div className="mt-4">
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-3xl font-bold text-gray-900">₹{displayPrice.toLocaleString()}</span>
-                                    <span className="text-gray-500 text-sm">/mo</span>
-                                </div>
-                                {billingPeriod === 'yearly' && (
-                                    <div className="text-xs text-green-600 font-medium mt-1">
-                                        Save ₹{((priceRupees - yearlyPrice) * 12).toLocaleString()}/year
-                                    </div>
+                                {hasPromo ? (
+                                    <>
+                                        {/* Strikethrough original price + big discounted price */}
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-lg text-gray-400 line-through font-medium">
+                                                {sym}{monthlyPrice.toLocaleString()}
+                                            </span>
+                                            <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">
+                                                SAVE {Math.round(((monthlyPrice - firstMonthAmount!) / monthlyPrice) * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="flex items-baseline gap-1 mt-1">
+                                            <span className="text-3xl font-bold text-gray-900">
+                                                {sym}{firstMonthAmount!.toLocaleString()}
+                                            </span>
+                                            <span className="text-gray-500 text-sm">/first mo</span>
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Then {sym}{monthlyPrice.toLocaleString()}/mo after first month
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-3xl font-bold text-gray-900">
+                                                {sym}{(billingPeriod === 'yearly' ? yearlyPrice : monthlyPrice).toLocaleString()}
+                                            </span>
+                                            <span className="text-gray-500 text-sm">/mo</span>
+                                        </div>
+                                        {billingPeriod === 'yearly' && (
+                                            <div className="text-xs text-green-600 font-medium mt-1">
+                                                Save {sym}{((monthlyPrice - yearlyPrice) * 12).toLocaleString()}/year
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
-
-                            {/* First-month deal callout */}
-                            {plan.priceFirstMonth && !isCurrentPlan && canUpgrade && (
-                                <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200/50 rounded-lg">
-                                    <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                    <span className="text-xs font-semibold text-amber-800">
-                                        First month only ₹{(plan.priceFirstMonth / 100).toLocaleString()}
-                                    </span>
-                                </div>
-                            )}
 
                             {/* Videos & value highlight */}
                             <div className="mt-4 p-3 bg-gray-50 rounded-xl space-y-2">

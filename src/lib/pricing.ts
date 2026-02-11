@@ -15,7 +15,9 @@ export interface SubscriptionPlan {
     displayName: string;
     description: string;
     priceMonthly: number; // in paise
-    priceFirstMonth?: number; // promotional price
+    priceFirstMonth?: number; // promotional price in paise
+    priceMonthlyUSD: number; // in cents
+    priceFirstMonthUSD?: number; // promotional price in cents
     credits: number;
     topupRate: number; // paise per 1000 credits
     voiceSlots: number;
@@ -52,6 +54,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Free Forever',
         description: 'Perfect for trying out our voice generation',
         priceMonthly: 0,
+        priceMonthlyUSD: 0,
         credits: 5000,
         topupRate: 0, // No topup for free
         voiceSlots: 5,
@@ -77,6 +80,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Starter',
         description: 'Great for content creators getting started',
         priceMonthly: 39500, // ₹395
+        priceMonthlyUSD: 500, // $5
         credits: 35000,
         topupRate: 1680, // ₹16.80 per 1000 credits
         voiceSlots: 10,
@@ -103,6 +107,8 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         description: 'Ideal for professional content creators',
         priceMonthly: 139500, // ₹1395 after first month
         priceFirstMonth: 79500, // ₹795 first month
+        priceMonthlyUSD: 1700, // $17
+        priceFirstMonthUSD: 1000, // $10
         credits: 150000,
         topupRate: 1220, // ₹12.20 per 1000 credits
         voiceSlots: 20,
@@ -131,6 +137,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Professional',
         description: 'For businesses and power users',
         priceMonthly: 219500, // ₹2195
+        priceMonthlyUSD: 2700, // $27
         credits: 500000,
         topupRate: 965, // ₹9.65 per 1000 credits
         voiceSlots: 30,
@@ -159,6 +166,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Enterprise',
         description: 'For agencies and large teams',
         priceMonthly: 349500, // ₹3495
+        priceMonthlyUSD: 4200, // $42
         credits: 1000000,
         topupRate: 650, // ₹6.50 per 1000 credits
         voiceSlots: 50,
@@ -257,23 +265,53 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
 // HELPER FUNCTIONS
 // ===========================================
 
-export function formatPrice(paise: number): string {
-    const rupees = paise / 100;
+export type Currency = 'INR' | 'USD';
+
+export function formatPrice(paise: number, currency: Currency = 'INR'): string {
+    const amount = paise / 100;
+    if (currency === 'USD') {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 0,
+        }).format(amount);
+    }
     return new Intl.NumberFormat('en-IN', {
         style: 'currency',
         currency: 'INR',
         maximumFractionDigits: 0,
-    }).format(rupees);
+    }).format(amount);
 }
 
-export function formatPriceWithDecimals(paise: number): string {
-    const rupees = paise / 100;
+export function formatPriceWithDecimals(paise: number, currency: Currency = 'INR'): string {
+    const amount = paise / 100;
+    if (currency === 'USD') {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(amount);
+    }
     return new Intl.NumberFormat('en-IN', {
         style: 'currency',
         currency: 'INR',
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-    }).format(rupees);
+    }).format(amount);
+}
+
+export function getCurrencySymbol(currency: Currency): string {
+    return currency === 'USD' ? '$' : '₹';
+}
+
+export function getPlanPrice(plan: SubscriptionPlan, currency: Currency): number {
+    return currency === 'USD' ? plan.priceMonthlyUSD : plan.priceMonthly;
+}
+
+export function getPlanFirstMonthPrice(plan: SubscriptionPlan, currency: Currency): number | undefined {
+    if (currency === 'USD') return plan.priceFirstMonthUSD;
+    return plan.priceFirstMonth;
 }
 
 export function formatCredits(credits: number): string {

@@ -212,7 +212,7 @@ export const LandingPage: React.FC = () => {
             >
               Best AI Voiceover Tool
               <br />
-              <span className="text-gray-400">for Faceless Youtube.</span>
+              <span className="text-gray-400">for Faceless YouTube.</span>
             </motion.h1>
 
             {/* Subheadline - 18px */}
@@ -628,7 +628,7 @@ export const LandingPage: React.FC = () => {
 
                 {/* Headline */}
                 <h2 className="text-3xl md:text-4xl font-semibold text-gray-900 tracking-tight mb-6 leading-[1.15]">
-                  Smartest AI Voice Tool for Faceless Youtube Creators
+                  Smartest AI Voice Tool for Faceless YouTube Creators
                 </h2>
 
                 {/* Description */}
@@ -698,14 +698,16 @@ export const LandingPage: React.FC = () => {
 
                 {/* Table Rows */}
                 {[
-                  { feature: 'Ease of Use', competitor: false, decible: true },
-                  { feature: 'Affordability', competitor: false, decible: true },
-                  { feature: 'Emotional Control', competitor: false, decible: true },
                   { feature: 'Built for YouTube Automation', competitor: false, decible: true },
+                  { feature: 'UPI Payment', competitor: false, decible: true },
+                  { feature: 'Affordability', competitor: false, decible: true },
+                  { feature: 'Made in India', competitor: false, decible: true },
+                  { feature: 'Custom Voices for Every Niche', competitor: false, decible: true },
+                  { feature: 'Emotional Control', competitor: false, decible: true },
                 ].map((row, i) => (
                   <div
                     key={i}
-                    className={`grid grid-cols-12 ${i !== 3 ? 'border-b border-gray-100' : ''}`}
+                    className={`grid grid-cols-12 ${i !== 5 ? 'border-b border-gray-100' : ''}`}
                   >
                     <div className="col-span-6 px-6 py-5">
                       <span className="text-sm font-medium text-gray-800">{row.feature}</span>

@@ -2,7 +2,7 @@
 
 import { Check, X, Zap, Crown, Star, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SubscriptionPlan, formatPrice } from '@/lib/pricing';
+import { SubscriptionPlan, formatPrice, Currency, getCurrencySymbol, getPlanPrice, getPlanFirstMonthPrice } from '@/lib/pricing';
 
 interface PricingCardProps {
     plan: SubscriptionPlan;
@@ -11,6 +11,7 @@ interface PricingCardProps {
     isFirstMonth?: boolean;
     onSelect?: (planId: string) => void;
     loading?: boolean;
+    currency?: Currency;
 }
 
 export function PricingCard({
@@ -20,12 +21,16 @@ export function PricingCard({
     isFirstMonth = false,
     onSelect,
     loading = false,
+    currency = 'INR',
 }: PricingCardProps) {
-    const effectivePrice = isFirstMonth && plan.priceFirstMonth
-        ? plan.priceFirstMonth
-        : plan.priceMonthly;
+    const monthlyPrice = getPlanPrice(plan, currency);
+    const firstMonthPrice = getPlanFirstMonthPrice(plan, currency);
+    const effectivePrice = isFirstMonth && firstMonthPrice
+        ? firstMonthPrice
+        : monthlyPrice;
 
-    const hasPromo = isFirstMonth && plan.priceFirstMonth && plan.priceFirstMonth < plan.priceMonthly;
+    const hasPromo = isFirstMonth && firstMonthPrice && firstMonthPrice < monthlyPrice;
+    const sym = getCurrencySymbol(currency);
 
     const getPlanIcon = () => {
         switch (plan.id) {
@@ -92,7 +97,7 @@ export function PricingCard({
 
             {/* Price */}
             <div className="mb-6">
-                {plan.priceMonthly === 0 ? (
+                {monthlyPrice === 0 ? (
                     <div className="flex items-baseline">
                         <span className="text-4xl font-bold text-gray-900">Free</span>
                         <span className="ml-2 text-gray-500">forever</span>
@@ -102,22 +107,22 @@ export function PricingCard({
                         {hasPromo && (
                             <div className="flex items-center gap-2 mb-1">
                                 <span className="text-lg text-gray-400 line-through">
-                                    {formatPrice(plan.priceMonthly)}
+                                    {sym}{(monthlyPrice / 100).toLocaleString()}
                                 </span>
                                 <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                    First Month Special
+                                    SAVE {Math.round(((monthlyPrice - effectivePrice) / monthlyPrice) * 100)}%
                                 </span>
                             </div>
                         )}
                         <div className="flex items-baseline">
                             <span className="text-4xl font-bold text-gray-900">
-                                {formatPrice(effectivePrice)}
+                                {sym}{(effectivePrice / 100).toLocaleString()}
                             </span>
-                            <span className="ml-2 text-gray-500">/month</span>
+                            <span className="ml-2 text-gray-500">{hasPromo ? '/first mo' : '/month'}</span>
                         </div>
                         {hasPromo && (
                             <p className="text-sm text-gray-500 mt-1">
-                                Then {formatPrice(plan.priceMonthly)}/month
+                                Then {sym}{(monthlyPrice / 100).toLocaleString()}/month
                             </p>
                         )}
                     </div>
@@ -145,7 +150,7 @@ export function PricingCard({
                 {plan.topupRate > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200 text-center">
                         <span className="text-sm text-gray-600">
-                            Top-up: <span className="font-semibold">{formatPrice(plan.topupRate)}</span> per 1K credits
+                            Top-up: <span className="font-semibold">{formatPrice(plan.topupRate, currency)}</span> per 1K credits
                         </span>
                     </div>
                 )}
