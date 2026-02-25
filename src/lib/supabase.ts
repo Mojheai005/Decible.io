@@ -36,14 +36,6 @@ export interface UserProfile {
     updated_at: string
 }
 
-export interface SavedVoice {
-    id: string
-    user_id: string
-    voice_id: string
-    voice_name: string
-    created_at: string
-}
-
 export interface GenerationHistory {
     id: string
     user_id: string
@@ -101,53 +93,6 @@ export async function updateUserCredits(userId: string, creditsUsed: number): Pr
 
     if (error) {
         console.error('Error updating credits:', error)
-        return false
-    }
-    return true
-}
-
-// Saved Voices
-export async function getSavedVoices(userId: string): Promise<SavedVoice[]> {
-    const { data, error } = await supabase
-        .from('saved_voices')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-
-    if (error) {
-        console.error('Error fetching saved voices:', error)
-        return []
-    }
-    return data || []
-}
-
-export async function saveVoice(userId: string, voiceId: string, voiceName: string): Promise<SavedVoice | null> {
-    const { data, error } = await supabase
-        .from('saved_voices')
-        .insert({
-            user_id: userId,
-            voice_id: voiceId,
-            voice_name: voiceName,
-        })
-        .select()
-        .single()
-
-    if (error) {
-        console.error('Error saving voice:', error)
-        return null
-    }
-    return data
-}
-
-export async function removeSavedVoice(userId: string, voiceId: string): Promise<boolean> {
-    const { error } = await supabase
-        .from('saved_voices')
-        .delete()
-        .eq('user_id', userId)
-        .eq('voice_id', voiceId)
-
-    if (error) {
-        console.error('Error removing saved voice:', error)
         return false
     }
     return true

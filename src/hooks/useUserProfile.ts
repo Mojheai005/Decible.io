@@ -10,7 +10,6 @@ export interface UserProfile {
     totalCredits: number
     usedCredits: number
     remainingCredits: number
-    voiceSlots: number
     resetDate: string
     createdAt: string
 }
@@ -29,7 +28,6 @@ export interface Plan {
     name: string
     credits: number
     price: number
-    voiceSlots: number
 }
 
 interface ProfileResponse {

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Play, Pause, Check, Plus, Volume2 } from 'lucide-react';
+import { Play, Pause } from 'lucide-react';
 import { ShaderAvatar, ShaderType } from './ShaderAvatar';
 import { MiniWaveform } from './AudioWaveform';
 
@@ -10,10 +10,8 @@ interface VoicePreviewCardProps {
   language?: string;
   tags?: string[];
   previewUrl?: string;
-  isSaved?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
-  onSave?: () => void;
   onPlay?: () => void;
   compact?: boolean;
 }
@@ -32,10 +30,8 @@ export const VoicePreviewCard: React.FC<VoicePreviewCardProps> = ({
   language = 'English',
   tags = [],
   previewUrl,
-  isSaved = false,
   isSelected = false,
   onSelect,
-  onSave,
   onPlay,
   compact = false,
 }) => {
@@ -78,11 +74,6 @@ export const VoicePreviewCard: React.FC<VoicePreviewCardProps> = ({
     }
   };
 
-  const handleSave = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onSave?.();
-  };
-
   if (compact) {
     // Compact card for mobile lists
     return (
@@ -99,11 +90,6 @@ export const VoicePreviewCard: React.FC<VoicePreviewCardProps> = ({
           <div className="w-12 h-12 rounded-xl overflow-hidden shadow-sm">
             <ShaderAvatar type={getShaderType(name, category)} />
           </div>
-          {isSaved && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
-              <Check className="w-3 h-3 text-white" strokeWidth={3} />
-            </div>
-          )}
         </div>
 
         {/* Info */}
@@ -175,38 +161,15 @@ export const VoicePreviewCard: React.FC<VoicePreviewCardProps> = ({
             )}
           </button>
 
-          {isSaved && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
-              <Check className="w-3 h-3 text-white" strokeWidth={3} />
-            </div>
-          )}
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h3 className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                {name}
-              </h3>
-              <p className="text-xs text-gray-500 mt-0.5">{category}</p>
-            </div>
-
-            {/* Save button */}
-            <button
-              onClick={handleSave}
-              className={`p-1.5 rounded-lg transition-all ${
-                isSaved
-                  ? 'bg-green-100 text-green-600'
-                  : 'bg-gray-100 text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {isSaved ? (
-                <Check className="w-4 h-4" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-            </button>
+          <div>
+            <h3 className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+              {name}
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">{category}</p>
           </div>
 
           {/* Tags & Language */}

@@ -157,11 +157,7 @@ export function PricingCard({
             </div>
 
             {/* Key Limits */}
-            <div className="mb-6 grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <div className="font-semibold text-gray-900">{plan.voiceSlots}</div>
-                    <div className="text-gray-500">Voice Slots</div>
-                </div>
+            <div className="mb-6 grid grid-cols-3 gap-3 text-sm">
                 <div className="bg-gray-50 rounded-lg p-3 text-center">
                     <div className="font-semibold text-gray-900">
                         {plan.maxCharsPerGeneration >= 1000

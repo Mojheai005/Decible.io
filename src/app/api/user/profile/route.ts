@@ -88,7 +88,6 @@ export async function GET() {
                 totalCredits,
                 usedCredits: (userProfile as Record<string, unknown>).credits_used_this_month || 0,
                 remainingCredits: (userProfile as Record<string, unknown>).credits_remaining || 0,
-                voiceSlots: currentPlan?.voiceSlots || 5,
                 resetDate: (userProfile as Record<string, unknown>).credits_reset_date,
             },
             transactions,
@@ -97,7 +96,6 @@ export async function GET() {
                 name: p.name,
                 credits: p.credits,
                 price: p.priceMonthly / 100,
-                voiceSlots: p.voiceSlots,
             })),
         });
 

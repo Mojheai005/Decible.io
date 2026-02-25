@@ -250,7 +250,6 @@ export async function GET(request: NextRequest) {
             credits: plan.credits,
             creditsFormatted: formatCredits(plan.credits),
             topupRate: plan.topupRate > 0 ? plan.topupRate / 100 : null,
-            voiceSlots: plan.voiceSlots,
             maxCharsPerGeneration: plan.maxCharsPerGeneration,
             maxGenerationsPerDay: plan.maxGenerationsPerDay,
             features: plan.features,

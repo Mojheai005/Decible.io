@@ -20,7 +20,6 @@ export interface SubscriptionPlan {
     priceFirstMonthUSD?: number; // promotional price in cents
     credits: number;
     topupRate: number; // paise per 1000 credits
-    voiceSlots: number;
     maxCharsPerGeneration: number;
     maxGenerationsPerDay: number;
     maxGenerationsPerHour: number;
@@ -57,7 +56,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         priceMonthlyUSD: 0,
         credits: 5000,
         topupRate: 0, // No topup for free
-        voiceSlots: 5,
+
         maxCharsPerGeneration: 1000,
         maxGenerationsPerDay: 10,
         maxGenerationsPerHour: 3,
@@ -83,7 +82,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         priceMonthlyUSD: 500, // $5
         credits: 35000,
         topupRate: 1680, // ₹16.80 per 1000 credits
-        voiceSlots: 10,
+
         maxCharsPerGeneration: 3000,
         maxGenerationsPerDay: 50,
         maxGenerationsPerHour: 10,
@@ -111,7 +110,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         priceFirstMonthUSD: 1000, // $10
         credits: 150000,
         topupRate: 1220, // ₹12.20 per 1000 credits
-        voiceSlots: 20,
+
         maxCharsPerGeneration: 5000,
         maxGenerationsPerDay: 150,
         maxGenerationsPerHour: 30,
@@ -140,7 +139,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         priceMonthlyUSD: 2700, // $27
         credits: 500000,
         topupRate: 965, // ₹9.65 per 1000 credits
-        voiceSlots: 30,
+
         maxCharsPerGeneration: 10000,
         maxGenerationsPerDay: 500,
         maxGenerationsPerHour: 60,
@@ -169,7 +168,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         priceMonthlyUSD: 4200, // $42
         credits: 1000000,
         topupRate: 650, // ₹6.50 per 1000 credits
-        voiceSlots: 50,
+
         maxCharsPerGeneration: 15000,
         maxGenerationsPerDay: 1000,
         maxGenerationsPerHour: 100,

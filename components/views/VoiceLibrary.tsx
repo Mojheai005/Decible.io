@@ -1,11 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Search, Filter, Plus, ChevronDown, ChevronLeft, ChevronRight, Globe, Loader2, Star, Check, Play, Pause, ArrowUpDown, X, MessageSquare, Tv, BookOpen, Smartphone, User, FolderOpen } from 'lucide-react';
+import { Search, Filter, Plus, ChevronDown, ChevronLeft, ChevronRight, Globe, Loader2, Star, Play, Pause, ArrowUpDown, X, MessageSquare, Tv, BookOpen, Smartphone, User, FolderOpen } from 'lucide-react';
 import { ShaderAvatar, ShaderType } from '../ui/ShaderAvatar';
 import { useVoices, Voice as ApiVoice } from '@/hooks/useVoices';
-import { useMyVoices } from '@/hooks/useMyVoices';
 import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
 import { VoiceFilters } from '@/components/modals/VoiceFilters';
-import { useNotifications } from '@/contexts/NotificationContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface VoiceLibraryProps {
@@ -120,11 +118,9 @@ const VoiceCard: React.FC<{
   voice: ApiVoice;
   isPlaying: boolean;
   isLoading: boolean;
-  isSaved: boolean;
   onPlay: (e: React.MouseEvent) => void;
-  onSave: (e: React.MouseEvent) => void;
   onClick: () => void;
-}> = ({ voice, isPlaying, isLoading, isSaved, onPlay, onSave, onClick }) => {
+}> = ({ voice, isPlaying, isLoading, onPlay, onClick }) => {
   return (
     <div
       onClick={onClick}
@@ -136,11 +132,6 @@ const VoiceCard: React.FC<{
           <div className="w-12 h-12 rounded-xl overflow-hidden shadow-sm">
             <ShaderAvatar type={getShaderType(voice.name, voice.category)} />
           </div>
-          {isSaved && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
-              <Check className="w-3 h-3 text-white" strokeWidth={3} />
-            </div>
-          )}
         </div>
 
         {/* Info */}
@@ -189,16 +180,6 @@ const VoiceCard: React.FC<{
             </>
           )}
         </button>
-        <button
-          onClick={onSave}
-          className={`p-2 rounded-lg transition-colors ${
-            isSaved
-              ? 'bg-green-50 text-green-600 border border-green-200'
-              : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
-          }`}
-        >
-          {isSaved ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-        </button>
       </div>
     </div>
   );
@@ -209,12 +190,10 @@ const VoiceRow: React.FC<{
   voice: ApiVoice;
   isPlaying: boolean;
   isLoading: boolean;
-  isSaved: boolean;
   onPlay: (e: React.MouseEvent) => void;
-  onSave: (e: React.MouseEvent) => void;
   onClick: () => void;
   isMobile?: boolean;
-}> = ({ voice, isPlaying, isLoading, isSaved, onPlay, onSave, onClick, isMobile }) => {
+}> = ({ voice, isPlaying, isLoading, onPlay, onClick, isMobile }) => {
   // Get flag emoji based on language
   const getLanguageFlag = (lang: string) => {
     const flags: Record<string, string> = {
@@ -257,11 +236,6 @@ const VoiceRow: React.FC<{
           <div className="w-11 h-11 rounded-xl overflow-hidden shadow-sm">
             <ShaderAvatar type={getShaderType(voice.name, voice.category)} />
           </div>
-          {isSaved && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-              <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-            </div>
-          )}
         </div>
 
         {/* Name & Info */}
@@ -313,11 +287,6 @@ const VoiceRow: React.FC<{
         <div className="w-10 h-10 rounded-full overflow-hidden shadow-sm">
           <ShaderAvatar type={getShaderType(voice.name, voice.category)} />
         </div>
-        {isSaved && (
-          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-            <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-          </div>
-        )}
       </div>
 
       {/* Name & Description */}
@@ -381,16 +350,6 @@ const VoiceRow: React.FC<{
             <Play className="w-4 h-4" />
           )}
         </button>
-        <button
-          onClick={onSave}
-          className={`p-2.5 rounded-full transition-all ${
-            isSaved
-              ? 'bg-green-100 text-green-600'
-              : 'hover:bg-gray-100 text-gray-400 hover:text-gray-700'
-          }`}
-        >
-          {isSaved ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-        </button>
       </div>
     </div>
   );
@@ -403,18 +362,9 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
   const isLoading = voiceData.isLoading;
   const error = voiceData.error;
 
-  const myVoicesData = useMyVoices();
-  const myVoices = myVoicesData?.myVoices || [];
-  const addVoice = myVoicesData?.addVoice;
-  const removeVoice = myVoicesData?.removeVoice;
-  const isVoiceSaved = myVoicesData?.isVoiceInMyVoices;
-  const slotsUsed = myVoicesData?.slotsUsed || 0;
-  const totalSlots = myVoicesData?.slotsTotal || 5;
-
-  const { showToast } = useNotifications();
   const { playVoice, currentVoice, isPlaying, isLoadingPreview } = useGlobalAudio();
 
-  const [activeTab, setActiveTab] = useState<'explore' | 'my-voices' | 'default' | 'latest'>(
+  const [activeTab, setActiveTab] = useState<'explore' | 'default' | 'latest'>(
     initialTab === 'latest' ? 'latest' : 'explore'
   );
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -462,12 +412,6 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
   // Filter logic
   const filteredVoices = useMemo(() => {
     let result = [...voices];
-
-
-    if (activeTab === 'my-voices') {
-      const savedIds = new Set(myVoices.map(v => v.voiceId));
-      result = result.filter(v => savedIds.has(v.id));
-    }
 
     if (activeTab === 'latest') {
       // Sort by newest first for latest tab
@@ -527,22 +471,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
     }
 
     return result;
-  }, [voices, selectedCategory, debouncedSearchQuery, activeTab, myVoices, sortOption, appliedFilters]);
-
-  const handleToggleSave = useCallback((voice: ApiVoice, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isVoiceSaved(voice.id)) {
-      removeVoice(voice.id);
-      showToast(`Removed "${voice.name}" from My Voices`, 'info');
-    } else {
-      if (slotsUsed < totalSlots) {
-        addVoice(voice.id, voice.name);
-        showToast(`Added "${voice.name}" to My Voices`, 'success');
-      } else {
-        showToast('Max slots reached! Upgrade to add more voices.', 'warning');
-      }
-    }
-  }, [isVoiceSaved, removeVoice, addVoice, slotsUsed, totalSlots, showToast]);
+  }, [voices, selectedCategory, debouncedSearchQuery, activeTab, sortOption, appliedFilters]);
 
   const handlePlayVoice = useCallback((voice: ApiVoice, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -618,14 +547,6 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
                 Latest
               </button>
               <button
-                onClick={() => setActiveTab('my-voices')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === 'my-voices' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                My Voices
-              </button>
-              <button
                 onClick={() => setActiveTab('default')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   activeTab === 'default' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
@@ -635,14 +556,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
               </button>
             </div>
 
-            {/* Slots & Create */}
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center">
-                  <div className={`w-2 h-2 rounded-full ${slotsUsed > 0 ? 'bg-blue-500' : 'bg-gray-300'}`} />
-                </div>
-                <span>{slotsUsed} / {totalSlots} slots used</span>
-              </div>
               <button
                 onClick={() => onNavigate?.('tts')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-[#0F172A] text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm"
@@ -853,7 +767,6 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
               {[
                 { id: 'explore', label: 'Explore' },
                 { id: 'latest', label: 'Latest' },
-                { id: 'my-voices', label: 'My Voices' },
                 { id: 'default', label: 'Default' },
               ].map(tab => (
                 <button
@@ -956,9 +869,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
                     voice={voice}
                     isPlaying={currentVoice?.id === voice.id && isPlaying}
                     isLoading={currentVoice?.id === voice.id && isLoadingPreview}
-                    isSaved={isVoiceSaved(voice.id)}
                     onPlay={(e) => handlePlayVoice(voice, e)}
-                    onSave={(e) => handleToggleSave(voice, e)}
                     onClick={() => playVoice(voice)}
                   />
                 ))
@@ -1012,7 +923,6 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
             <h2 className="text-lg font-bold text-gray-900">
               {searchQuery ? `Search results for "${searchQuery}"` :
                selectedCategory ? `${selectedCategory} voices` :
-               activeTab === 'my-voices' ? 'My Saved Voices' :
                activeTab === 'latest' ? 'Latest voices' :
                hasActiveFilters ? 'Filtered voices' : 'All voices'}
             </h2>
@@ -1049,7 +959,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
               </div>
               <p className="font-semibold text-gray-900">No voices found</p>
               <p className="text-sm text-gray-500 mt-1">
-                {activeTab === 'my-voices' ? 'Save voices to see them here' : 'Try adjusting your search or filters'}
+                Try adjusting your search or filters
               </p>
             </div>
           ) : (
@@ -1078,9 +988,7 @@ export const VoiceLibrary: React.FC<VoiceLibraryProps> = ({ onNavigate, initialT
                     voice={voice}
                     isPlaying={currentVoice?.id === voice.id && isPlaying}
                     isLoading={currentVoice?.id === voice.id && isLoadingPreview}
-                    isSaved={isVoiceSaved(voice.id)}
                     onPlay={(e) => handlePlayVoice(voice, e)}
-                    onSave={(e) => handleToggleSave(voice, e)}
                     onClick={() => playVoice(voice)}
                     isMobile={isMobile}
                   />

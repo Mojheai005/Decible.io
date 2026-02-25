@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Play, Mic, Sparkles, Loader2, ArrowRight, Check, PlayCircle, Github, Twitter, Linkedin, Users, Globe, Zap, ChevronDown } from 'lucide-react';
+import { Play, Mic, Sparkles, Loader2, ArrowRight, Check, PlayCircle, Users, Globe, Zap, ChevronDown, Menu, X, Star, Crown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ShaderAvatar, ShaderType } from '../ui/ShaderAvatar';
 import { AuthModal } from '../modals/AuthModal';
 import DecibleLogo from '../DecibleLogo';
+import { useCurrency } from '@/hooks/useCurrency';
+import { SUBSCRIPTION_PLANS, getCurrencySymbol, getPlanPrice, getPlanFirstMonthPrice } from '@/lib/pricing';
 
 export const LandingPage: React.FC = () => {
   const [demoText, setDemoText] = useState("In the ancient land of Eldoria, where skies shimmered and forests whispered secrets to the wind, lived a dragon named Zephyros.");
@@ -11,6 +13,9 @@ export const LandingPage: React.FC = () => {
   const [activeVoice, setActiveVoice] = useState(0);
   const [showAuth, setShowAuth] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const currency = useCurrency();
+  const sym = getCurrencySymbol(currency);
 
   const faqs = [
     {
@@ -139,24 +144,69 @@ export const LandingPage: React.FC = () => {
             <button onClick={() => setShowAuth(true)} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               Voices
             </button>
-            <button onClick={() => window.scrollTo({ top: document.body.scrollHeight * 0.5, behavior: 'smooth' })} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            <button onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               Pricing
             </button>
           </div>
 
-          {/* Auth Buttons */}
+          {/* Auth Buttons + Mobile Menu */}
           <div className="flex items-center gap-3">
             <button onClick={() => setShowAuth(true)} className="text-sm text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
               Log in
             </button>
             <button
               onClick={() => setShowAuth(true)}
-              className="h-10 px-5 bg-gray-900 text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors"
+              className="h-10 px-5 bg-gray-900 text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors hidden sm:block"
             >
               Get Started
             </button>
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-gray-600 hover:text-gray-900"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Nav Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-100 bg-white px-6 py-4 space-y-3">
+            <button
+              onClick={() => { setShowAuth(true); setMobileMenuOpen(false); }}
+              className="block w-full text-left text-sm text-gray-700 py-2 font-medium"
+            >
+              Text to Speech
+            </button>
+            <button
+              onClick={() => { setShowAuth(true); setMobileMenuOpen(false); }}
+              className="block w-full text-left text-sm text-gray-700 py-2 font-medium"
+            >
+              Voices
+            </button>
+            <button
+              onClick={() => { document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}
+              className="block w-full text-left text-sm text-gray-700 py-2 font-medium"
+            >
+              Pricing
+            </button>
+            <div className="pt-2 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => { setShowAuth(true); setMobileMenuOpen(false); }}
+                className="flex-1 h-10 bg-gray-900 text-white text-sm font-medium rounded-full"
+              >
+                Get Started
+              </button>
+              <button
+                onClick={() => { setShowAuth(true); setMobileMenuOpen(false); }}
+                className="flex-1 h-10 border border-gray-200 text-gray-700 text-sm font-medium rounded-full"
+              >
+                Log in
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       <main>
@@ -656,6 +706,153 @@ export const LandingPage: React.FC = () => {
         </section>
 
         {/* ============================================
+            PRICING SECTION - 4 plan cards, currency-aware
+            ============================================ */}
+        <section id="pricing" className="py-16 bg-white">
+          <div className="max-w-5xl mx-auto px-6">
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-10"
+            >
+              <span className="inline-block px-4 py-1.5 mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-100 rounded-full">
+                Pricing
+              </span>
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">
+                Simple, transparent pricing
+              </h2>
+              <p className="text-gray-500 mt-3 max-w-xl mx-auto">
+                Start free, upgrade as you grow. All plans include access to our full voice library.
+              </p>
+            </motion.div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {SUBSCRIPTION_PLANS.filter(p => p.id !== 'free').map((plan, index) => {
+                const monthlyPrice = getPlanPrice(plan, currency) / 100;
+                const firstMonthPrice = getPlanFirstMonthPrice(plan, currency);
+                const firstMonthAmount = firstMonthPrice ? firstMonthPrice / 100 : null;
+                const isPopular = plan.id === 'creator';
+                const hasPromo = !!firstMonthAmount && firstMonthAmount < monthlyPrice;
+
+                const getPlanIcon = () => {
+                  switch (plan.id) {
+                    case 'starter': return <Star className="w-5 h-5" />;
+                    case 'creator': return <Sparkles className="w-5 h-5" />;
+                    case 'pro': return <Crown className="w-5 h-5" />;
+                    case 'advanced': return <Crown className="w-5 h-5 text-amber-400" />;
+                    default: return <Zap className="w-5 h-5" />;
+                  }
+                };
+
+                return (
+                  <motion.div
+                    key={plan.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.1, duration: 0.5 }}
+                    className={`relative rounded-2xl border-2 p-6 transition-all ${
+                      isPopular
+                        ? 'border-gray-900 bg-white shadow-xl'
+                        : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                    }`}
+                  >
+                    {isPopular && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-gray-900 text-white text-xs font-bold rounded-full flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        Popular
+                      </div>
+                    )}
+
+                    {/* Plan header */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`p-1.5 rounded-lg ${
+                        plan.id === 'starter' ? 'bg-blue-100 text-blue-600' :
+                        plan.id === 'creator' ? 'bg-violet-100 text-violet-600' :
+                        plan.id === 'pro' ? 'bg-emerald-100 text-emerald-600' :
+                        'bg-amber-100 text-amber-600'
+                      }`}>
+                        {getPlanIcon()}
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900">{plan.displayName}</h3>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-4">{plan.description}</p>
+
+                    {/* Price */}
+                    <div className="mb-5">
+                      {hasPromo ? (
+                        <>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-base text-gray-400 line-through">{sym}{monthlyPrice.toLocaleString()}</span>
+                            <span className="text-[10px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded-full">
+                              SAVE {Math.round(((monthlyPrice - firstMonthAmount!) / monthlyPrice) * 100)}%
+                            </span>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-3xl font-bold text-gray-900">{sym}{firstMonthAmount!.toLocaleString()}</span>
+                            <span className="text-gray-500 text-sm">/first mo</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">Then {sym}{monthlyPrice.toLocaleString()}/mo</p>
+                        </>
+                      ) : (
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-bold text-gray-900">{sym}{monthlyPrice.toLocaleString()}</span>
+                          <span className="text-gray-500 text-sm">/mo</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Credits */}
+                    <div className={`p-3 rounded-xl mb-5 text-center ${
+                      plan.id === 'starter' ? 'bg-blue-50' :
+                      plan.id === 'creator' ? 'bg-violet-50' :
+                      plan.id === 'pro' ? 'bg-emerald-50' :
+                      'bg-amber-50'
+                    }`}>
+                      <div className="text-xl font-bold text-gray-900">
+                        {plan.credits >= 1000000
+                          ? `${(plan.credits / 1000000).toFixed(0)}M`
+                          : `${(plan.credits / 1000).toFixed(0)}K`}
+                      </div>
+                      <div className="text-xs text-gray-600">credits/month</div>
+                    </div>
+
+                    {/* Key features */}
+                    <div className="space-y-2 mb-6">
+                      {plan.features.filter(f => f.included).slice(0, 4).map((feature, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <Check className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                          <span className="text-sm text-gray-700">{feature.text}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* CTA */}
+                    <button
+                      onClick={() => setShowAuth(true)}
+                      className={`w-full py-3 rounded-xl font-semibold text-sm transition-all ${
+                        isPopular
+                          ? 'bg-gray-900 text-white hover:bg-gray-800'
+                          : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                      }`}
+                    >
+                      Get Started
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Free tier note */}
+            <p className="text-center text-sm text-gray-500 mt-8">
+              Start with our <span className="font-semibold text-gray-700">Free plan</span> — 5,000 credits, no credit card required.
+            </p>
+          </div>
+        </section>
+
+        {/* ============================================
             COMPARISON CHART - High impact, scroll-stopping
             ============================================ */}
         <section className="py-16 bg-gradient-to-b from-gray-900 to-gray-800">
@@ -704,10 +901,10 @@ export const LandingPage: React.FC = () => {
                   { feature: 'Made in India', competitor: false, decible: true },
                   { feature: 'Custom Voices for Every Niche', competitor: false, decible: true },
                   { feature: 'Emotional Control', competitor: false, decible: true },
-                ].map((row, i) => (
+                ].map((row, i, arr) => (
                   <div
                     key={i}
-                    className={`grid grid-cols-12 ${i !== 5 ? 'border-b border-gray-100' : ''}`}
+                    className={`grid grid-cols-12 ${i !== arr.length - 1 ? 'border-b border-gray-100' : ''}`}
                   >
                     <div className="col-span-6 px-6 py-5">
                       <span className="text-sm font-medium text-gray-800">{row.feature}</span>
@@ -740,6 +937,22 @@ export const LandingPage: React.FC = () => {
                     </div>
                   </div>
                 ))}
+
+                {/* Pricing Comparison Row */}
+                <div className="grid grid-cols-12 border-t border-gray-200 bg-gray-50">
+                  <div className="col-span-6 px-6 py-5">
+                    <span className="text-sm font-bold text-gray-900">Creator Plan Price</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Similar features comparison</p>
+                  </div>
+                  <div className="col-span-3 px-4 py-5 text-center border-l border-gray-200">
+                    <span className="text-lg font-bold text-gray-400">{currency === 'USD' ? '$22' : '~₹1,800'}</span>
+                    <p className="text-xs text-gray-400">/month</p>
+                  </div>
+                  <div className="col-span-3 px-4 py-5 text-center border-l border-gray-200 bg-emerald-50">
+                    <span className="text-lg font-bold text-emerald-600">{currency === 'USD' ? '$17' : '₹1,395'}</span>
+                    <p className="text-xs text-emerald-600 font-medium">/month</p>
+                  </div>
+                </div>
 
                 {/* Bottom CTA */}
                 <div className="px-6 py-6 bg-gray-50 border-t border-gray-200">
@@ -907,11 +1120,9 @@ export const LandingPage: React.FC = () => {
               <p className="text-sm text-gray-400">
                 © {new Date().getFullYear()} Decible. All rights reserved.
               </p>
-              <div className="flex items-center gap-4">
-                <Github className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors" />
-                <Twitter className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors" />
-                <Linkedin className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors" />
-              </div>
+              <a href="mailto:support@decible.io" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+                support@decible.io
+              </a>
             </div>
           </div>
         </footer>

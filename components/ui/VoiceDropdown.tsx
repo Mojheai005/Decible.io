@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Search, Play, Pause, Check, ChevronDown, Plus, Compass } from 'lucide-react';
+import { Search, Play, Pause, Check, ChevronDown, Compass } from 'lucide-react';
 import { ShaderAvatar, ShaderType } from './ShaderAvatar';
 import { useVoices } from '@/hooks/useVoices';
-import { useMyVoices } from '@/hooks/useMyVoices';
 
 interface Voice {
   id: string;
@@ -21,12 +20,13 @@ interface VoiceDropdownProps {
   onNavigateToLibrary?: () => void;
 }
 
-// Get shader type from voice name
 const getShaderForVoice = (name: string): ShaderType => {
   const shaders: ShaderType[] = ['fluid', 'neon', 'chrome', 'orb', 'waves', 'midnight'];
   const hash = name.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
   return shaders[hash % shaders.length];
 };
+
+type GenderFilter = 'all' | 'male' | 'female';
 
 export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
   onSelect,
@@ -36,16 +36,13 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>('all');
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch ALL voices from API (needed to get voice details)
   const { voices: apiVoices, isLoading } = useVoices();
-
-  // My voices - only these are shown in dropdown
-  const { myVoices, slotsUsed, slotsTotal } = useMyVoices();
 
   // Transform API voices to Voice type
   const allVoices: Voice[] = useMemo(() => {
@@ -61,15 +58,6 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
     }));
   }, [apiVoices]);
 
-  // Get full voice details for saved voices only
-  const savedVoices: Voice[] = useMemo(() => {
-    if (myVoices.length === 0 || allVoices.length === 0) return [];
-
-    return myVoices
-      .map(mv => allVoices.find(v => v.id === mv.voiceId))
-      .filter((v): v is Voice => v !== undefined);
-  }, [myVoices, allVoices]);
-
   // Debounced search
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
@@ -77,16 +65,27 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Filter saved voices by search
+  // Filter voices by search + gender
   const filteredVoices = useMemo(() => {
-    if (!debouncedSearch) return savedVoices;
+    let filtered = allVoices;
 
-    const searchLower = debouncedSearch.toLowerCase();
-    return savedVoices.filter(v =>
-      v.name.toLowerCase().includes(searchLower) ||
-      v.category.toLowerCase().includes(searchLower)
-    );
-  }, [savedVoices, debouncedSearch]);
+    if (genderFilter !== 'all') {
+      filtered = filtered.filter(v =>
+        v.gender?.toLowerCase() === genderFilter
+      );
+    }
+
+    if (debouncedSearch) {
+      const searchLower = debouncedSearch.toLowerCase();
+      filtered = filtered.filter(v =>
+        v.name.toLowerCase().includes(searchLower) ||
+        v.category.toLowerCase().includes(searchLower) ||
+        v.accent?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    return filtered;
+  }, [allVoices, debouncedSearch, genderFilter]);
 
   // Current display voice
   const displayVoice = useMemo(() => {
@@ -94,8 +93,8 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
       const found = allVoices.find(v => v.id === currentVoiceId);
       if (found) return found;
     }
-    return savedVoices[0] || null;
-  }, [allVoices, currentVoiceId, savedVoices]);
+    return null;
+  }, [allVoices, currentVoiceId]);
 
   // Play preview
   const handlePlayPreview = useCallback((voice: Voice, e: React.MouseEvent) => {
@@ -173,6 +172,14 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
+  // Reset filters when dropdown opens
+  useEffect(() => {
+    if (isOpen) {
+      setSearch('');
+      setGenderFilter('all');
+    }
+  }, [isOpen]);
+
   return (
     <div className="relative">
       {/* Trigger Button */}
@@ -183,7 +190,6 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
         }`}
       >
         <div className="flex items-center gap-3">
-          {/* Shader avatar for selected voice */}
           <div className="w-10 h-10 rounded-full overflow-hidden shadow-sm ring-2 ring-white">
             {displayVoice ? (
               <ShaderAvatar type={getShaderForVoice(displayVoice.name)} />
@@ -196,7 +202,7 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
               {displayVoice?.name || 'Select a Voice'}
             </div>
             <div className="text-xs text-gray-500">
-              {displayVoice?.category || 'No voice selected'}
+              {displayVoice ? `${displayVoice.category} • ${displayVoice.accent || displayVoice.gender || 'Voice'}` : 'Choose from our voice library'}
             </div>
           </div>
         </div>
@@ -209,41 +215,54 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
           <div className="fixed inset-0 z-[99998]" onClick={() => setIsOpen(false)} />
 
           <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-xl border border-gray-200 z-[99999] overflow-hidden">
-            {/* Header */}
-            <div className="p-3 border-b border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-900">My Voices</span>
-                <span className="text-xs text-gray-400">{slotsUsed}/{slotsTotal} slots</span>
+            {/* Header with search + filter */}
+            <div className="p-3 border-b border-gray-100 space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Search voices..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-gray-400 focus:bg-white"
+                />
               </div>
-              {savedVoices.length > 3 && (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder="Search my voices..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-gray-400 focus:bg-white"
-                  />
-                </div>
-              )}
+              {/* Gender filter tabs */}
+              <div className="flex gap-1">
+                {(['all', 'male', 'female'] as GenderFilter[]).map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => setGenderFilter(g)}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      genderFilter === g
+                        ? 'bg-gray-900 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {g === 'all' ? 'All' : g === 'male' ? 'Male' : 'Female'}
+                  </button>
+                ))}
+                <span className="ml-auto text-xs text-gray-400 self-center">
+                  {filteredVoices.length} voices
+                </span>
+              </div>
             </div>
 
-            {/* Voice List - Only saved voices */}
-            <div className="max-h-[280px] overflow-y-auto">
+            {/* Voice List */}
+            <div className="max-h-[320px] overflow-y-auto">
               {isLoading ? (
                 <div className="p-6 text-center text-gray-400">
                   <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mx-auto mb-2" />
-                  <span className="text-sm">Loading...</span>
+                  <span className="text-sm">Loading voices...</span>
                 </div>
               ) : filteredVoices.length === 0 ? (
                 <div className="p-6 text-center">
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Compass className="w-6 h-6 text-gray-400" />
                   </div>
-                  <p className="text-sm font-medium text-gray-700">No voices saved yet</p>
-                  <p className="text-xs text-gray-500 mt-1">Add voices from the Voice Library</p>
+                  <p className="text-sm font-medium text-gray-700">No voices found</p>
+                  <p className="text-xs text-gray-500 mt-1">Try a different search or filter</p>
                 </div>
               ) : (
                 <div className="p-2">
@@ -259,7 +278,7 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
                           isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
                         }`}
                       >
-                        {/* Shader Avatar for ALL voices */}
+                        {/* Shader Avatar */}
                         <div className="relative shrink-0">
                           <div className={`w-10 h-10 rounded-full overflow-hidden shadow-sm ${isSelected ? 'ring-2 ring-blue-400' : ''}`}>
                             <ShaderAvatar type={getShaderForVoice(voice.name)} />
@@ -302,7 +321,7 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
               )}
             </div>
 
-            {/* Explore More Voices Button */}
+            {/* Browse Library Button */}
             <div className="p-2 border-t border-gray-100">
               <button
                 onClick={() => {
@@ -311,8 +330,8 @@ export const VoiceDropdown: React.FC<VoiceDropdownProps> = ({
                 }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
               >
-                <Plus className="w-4 h-4" />
-                Explore More Voices
+                <Compass className="w-4 h-4" />
+                Browse Voice Library
               </button>
             </div>
           </div>
