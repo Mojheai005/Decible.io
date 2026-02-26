@@ -10,7 +10,7 @@ import { Subscription } from './components/views/Subscription';
 import { HelpCenter } from './components/views/HelpCenter';
 import { Bell, Menu, FileAudio, Coins, HelpCircle } from 'lucide-react';
 import DecibleLogo from './components/DecibleLogo';
-import { useUserProfile, clearProfileCache } from './src/hooks/useUserProfile';
+import { useUserProfile, clearProfileCache, prefetchProfile } from './src/hooks/useUserProfile';
 import { AudioProvider } from './src/contexts/GlobalAudioContext';
 import { NotificationProvider, useNotifications } from './src/contexts/NotificationContext';
 import { GlobalPlayer } from './components/GlobalPlayer';
@@ -42,6 +42,7 @@ const AppContent: React.FC = () => {
     // Check existing session
     supabase.auth.getSession().then(({ data: { session } }: { data: { session: unknown } }) => {
       if (session) {
+        prefetchProfile(); // Start fetching profile in parallel with React re-render
         setIsLoggedIn(true);
         setView('dashboard');
       }
@@ -53,6 +54,9 @@ const AppContent: React.FC = () => {
       if (event === 'SIGNED_IN' && session) {
         // Only navigate to dashboard on INITIAL sign-in, not on token refresh
         if (!isLoggedInRef.current) {
+          // Prefetch profile IMMEDIATELY — before React re-renders and mounts useUserProfile hooks
+          // This eliminates the waterfall: auth → re-render → fetch profile
+          prefetchProfile();
           setIsLoggedIn(true);
           setView('dashboard');
           addNotification({

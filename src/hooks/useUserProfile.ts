@@ -76,6 +76,37 @@ function setCachedProfile(data: ProfileResponse) {
 
 export function clearProfileCache() {
     try { sessionStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* ignore */ }
+    // Also clear in-flight so next fetch is fresh
+    inFlightFetch = null
+}
+
+// --- Module-level deduplication ---
+// When multiple components call useUserProfile, only ONE network request is made.
+// All others share the same promise.
+let inFlightFetch: Promise<ProfileResponse> | null = null
+let subscribers: Array<(data: ProfileResponse) => void> = []
+
+async function fetchProfileOnce(): Promise<ProfileResponse> {
+    if (inFlightFetch) return inFlightFetch
+
+    inFlightFetch = fetch('/api/user/profile').then(async (res) => {
+        if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`)
+        const result: ProfileResponse = await res.json()
+        setCachedProfile(result)
+        // Notify all subscribers
+        subscribers.forEach(fn => fn(result))
+        return result
+    }).finally(() => {
+        // Clear after 100ms to allow micro-batched calls to share
+        setTimeout(() => { inFlightFetch = null }, 100)
+    })
+
+    return inFlightFetch
+}
+
+// Prefetch profile and store in cache — call this on sign-in BEFORE React re-renders
+export function prefetchProfile() {
+    fetchProfileOnce().catch(() => { /* ignore, components will retry */ })
 }
 
 export function useUserProfile(enabled = true): UseUserProfileResult {
@@ -95,24 +126,24 @@ export function useUserProfile(enabled = true): UseUserProfileResult {
         setError(null)
 
         try {
-            const response = await fetch('/api/user/profile')
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch profile: ${response.status}`)
-            }
-
-            const result: ProfileResponse = await response.json()
+            const result = await fetchProfileOnce()
             setData(result)
-            setCachedProfile(result)
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to fetch profile'
-            // Only set error if we don't have cached data
-            if (!data) setError(errorMessage)
+            setError(prev => prev ?? errorMessage)
             console.error('Error fetching profile:', err)
         } finally {
             setIsLoading(false)
         }
-    }, [data])
+    }, [])
+
+    // Subscribe to shared fetch updates from other hook instances
+    useEffect(() => {
+        if (!enabled) return
+        const handler = (result: ProfileResponse) => { setData(result) }
+        subscribers.push(handler)
+        return () => { subscribers = subscribers.filter(fn => fn !== handler) }
+    }, [enabled])
 
     // Fetch when enabled changes to true
     useEffect(() => {
@@ -137,7 +168,10 @@ export function useUserProfile(enabled = true): UseUserProfileResult {
     // Listen for credit updates from other components
     useEffect(() => {
         if (!enabled) return
-        const handleCreditsUpdated = () => { fetchProfile(false) }
+        const handleCreditsUpdated = () => {
+            inFlightFetch = null // Force fresh fetch
+            fetchProfile(false)
+        }
         window.addEventListener('credits-updated', handleCreditsUpdated)
         return () => { window.removeEventListener('credits-updated', handleCreditsUpdated) }
     }, [enabled, fetchProfile])
@@ -154,6 +188,7 @@ export function useUserProfile(enabled = true): UseUserProfileResult {
                 return false
             }
 
+            inFlightFetch = null // Force fresh fetch after credit use
             await fetchProfile(false)
             return true
         } catch (err) {
@@ -168,7 +203,7 @@ export function useUserProfile(enabled = true): UseUserProfileResult {
         plans: data?.plans || [],
         isLoading,
         error,
-        refetch: () => fetchProfile(false),
+        refetch: () => { inFlightFetch = null; return fetchProfile(false) },
         useCredits,
     }
 }

@@ -602,7 +602,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                                 {item.audioUrl && (
                                     <button
                                         onClick={(e) => handleDownloadItem(item, e)}
-                                        className={`p-2 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                        className="p-2 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
                                         title="Download"
                                     >
                                         <Download className="w-4 h-4" />
@@ -610,7 +610,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                                 )}
                                 <button
                                     onClick={(e) => handleDeleteHistoryItem(item.id, e)}
-                                    className={`p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                    className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
                                     title="Delete"
                                 >
                                     <Trash2 className="w-4 h-4" />

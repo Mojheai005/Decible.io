@@ -14,16 +14,31 @@ export async function GET() {
 
         const admin = getAdminClient();
 
-        // Get user profile from Supabase
-        const { data: profile, error: profileError } = await admin
+        // Fetch profile and transactions in PARALLEL to cut latency in half
+        const profilePromise = admin
             .from('user_profiles')
             .select('*')
             .eq('id', user.id)
             .single();
 
-        let userProfile = profile;
+        const txPromise = admin
+            .from('credit_transactions')
+            .select('id, created_at, type, amount, description, balance_after')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(50);
 
-        if (profileError || !profile) {
+        const [profileResult, txResult] = await Promise.all([
+            profilePromise,
+            txPromise.then(
+                (r: { data: unknown }) => r,
+                () => ({ data: null })
+            ),
+        ]);
+
+        let userProfile = profileResult.data;
+
+        if (profileResult.error || !profileResult.data) {
             // First login — create profile with free tier defaults
             const { data: newProfile, error: insertError } = await admin
                 .from('user_profiles')
@@ -53,29 +68,18 @@ export async function GET() {
         );
         const totalCredits = currentPlan?.credits || 5000;
 
-        // Fetch real credit transactions (last 50)
+        // Map transactions
         let transactions: Array<{ id: string; date: string; type: string; amount: number; status: string; description?: string }> = [];
-        try {
-            const { data: txData } = await admin
-                .from('credit_transactions')
-                .select('id, created_at, type, amount, description, balance_after')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            if (txData && txData.length > 0) {
-                transactions = txData.map((tx: Record<string, unknown>) => ({
-                    id: tx.id as string,
-                    date: tx.created_at as string,
-                    type: tx.type as string,
-                    amount: tx.amount as number,
-                    status: 'completed',
-                    description: (tx.description as string) || undefined,
-                }));
-            }
-        } catch (txErr) {
-            // Table might not exist yet — that's OK
-            console.error('Error fetching transactions:', txErr);
+        const txData = txResult.data as Record<string, unknown>[] | null;
+        if (txData && txData.length > 0) {
+            transactions = txData.map((tx: Record<string, unknown>) => ({
+                id: tx.id as string,
+                date: tx.created_at as string,
+                type: tx.type as string,
+                amount: tx.amount as number,
+                status: 'completed',
+                description: (tx.description as string) || undefined,
+            }));
         }
 
         // Return real profile + transactions + plans
