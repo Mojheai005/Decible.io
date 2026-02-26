@@ -10,7 +10,7 @@ import DecibleLogo from '@/components/DecibleLogo'
 function LoginForm() {
     const router = useRouter()
     const searchParams = useSearchParams()
-    const redirectTo = searchParams.get('redirect') || '/dashboard'
+    const redirectTo = searchParams.get('redirect') || '/'
     const errorParam = searchParams.get('error')
 
     const [email, setEmail] = useState('')

@@ -10,7 +10,7 @@ import { Subscription } from './components/views/Subscription';
 import { HelpCenter } from './components/views/HelpCenter';
 import { Bell, Menu, FileAudio, Coins, HelpCircle } from 'lucide-react';
 import DecibleLogo from './components/DecibleLogo';
-import { useUserProfile } from './src/hooks/useUserProfile';
+import { useUserProfile, clearProfileCache } from './src/hooks/useUserProfile';
 import { AudioProvider } from './src/contexts/GlobalAudioContext';
 import { NotificationProvider, useNotifications } from './src/contexts/NotificationContext';
 import { GlobalPlayer } from './components/GlobalPlayer';
@@ -30,7 +30,7 @@ const AppContent: React.FC = () => {
   const isMobile = useIsMobile(768);
 
   const { unreadCount, addNotification, showToast } = useNotifications();
-  const { profile } = useUserProfile();
+  const { profile } = useUserProfile(isLoggedIn);
 
   // Keep ref in sync with state to avoid stale closures
   useEffect(() => { isLoggedInRef.current = isLoggedIn; }, [isLoggedIn]);
@@ -40,7 +40,7 @@ const AppContent: React.FC = () => {
     const supabase = createClient();
 
     // Check existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: unknown } }) => {
       if (session) {
         setIsLoggedIn(true);
         setView('dashboard');
@@ -49,7 +49,7 @@ const AppContent: React.FC = () => {
     });
 
     // Listen for auth state changes (login/logout/token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: unknown) => {
       if (event === 'SIGNED_IN' && session) {
         // Only navigate to dashboard on INITIAL sign-in, not on token refresh
         if (!isLoggedInRef.current) {
@@ -63,6 +63,7 @@ const AppContent: React.FC = () => {
           showToast('Successfully logged in!', 'success');
         }
       } else if (event === 'SIGNED_OUT') {
+        clearProfileCache();
         setIsLoggedIn(false);
         setView('landing');
       }
@@ -76,6 +77,7 @@ const AppContent: React.FC = () => {
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    clearProfileCache();
     setIsLoggedIn(false);
     setView('landing');
     showToast('Logged out successfully', 'info');
