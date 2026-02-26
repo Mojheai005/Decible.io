@@ -301,6 +301,48 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
             audioRef.current.src = item.audioUrl;
             audioRef.current.play().catch(() => {});
         }
+
+        // Close the bottom sheet on mobile so the mini player is visible
+        if (isMobile) {
+            setShowMobileSettings(false);
+        }
+    };
+
+    const handleDownloadItem = async (item: HistoryItem, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!item.audioUrl) {
+            showToast('No audio available for download', 'error');
+            return;
+        }
+
+        try {
+            showToast('Starting download...', 'info', 2000);
+            const response = await fetch(item.audioUrl);
+            if (!response.ok) throw new Error('Download failed');
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${item.voiceName.replace(/\s+/g, '-').toLowerCase()}-audio.mp3`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Download complete!', 'success');
+        } catch {
+            try {
+                const link = document.createElement('a');
+                link.href = item.audioUrl;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('Opening audio — long-press to save', 'info', 4000);
+            } catch {
+                showToast('Download failed. Please try again.', 'error');
+            }
+        }
     };
 
     const handleDeleteHistoryItem = (id: string, e: React.MouseEvent) => {
@@ -536,20 +578,39 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                             className={`group flex flex-col gap-2 rounded-xl cursor-pointer transition-all border ${isMobile ? 'p-3' : 'p-3'} ${currentTrack?.id === item.id ? 'bg-gray-50 border-gray-200 shadow-sm' : 'bg-transparent border-transparent hover:bg-gray-50/50 active:bg-gray-50'}`}
                             onClick={() => handleHistoryItemClick(item)}
                         >
-                            <div className="text-sm text-gray-800 leading-relaxed font-medium line-clamp-2">
-                                {item.text}
-                            </div>
-                            <div className="flex items-center justify-between mt-1">
-                                <div className="flex items-center gap-2 text-xs text-gray-400">
-                                    <span className="font-semibold text-gray-600">{item.voiceName}</span>
-                                    <span className="text-gray-300">•</span>
-                                    <span>{item.timestamp}</span>
-                                    <span className="text-gray-300">•</span>
-                                    <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px] text-gray-500">{item.duration}</span>
+                            <div className="flex items-start gap-2">
+                                {/* Play indicator for active track */}
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${currentTrack?.id === item.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                    {currentTrack?.id === item.id && isPlaying ? (
+                                        <Pause className="w-3.5 h-3.5 fill-current" />
+                                    ) : (
+                                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                    )}
                                 </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm text-gray-800 leading-relaxed font-medium line-clamp-2">
+                                        {item.text}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                                        <span className="font-semibold text-gray-600">{item.voiceName}</span>
+                                        <span className="text-gray-300">·</span>
+                                        <span>{item.timestamp}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-end gap-1 -mt-1">
+                                {item.audioUrl && (
+                                    <button
+                                        onClick={(e) => handleDownloadItem(item, e)}
+                                        className={`p-2 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                        title="Download"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
+                                )}
                                 <button
                                     onClick={(e) => handleDeleteHistoryItem(item.id, e)}
-                                    className={`p-2 hover:bg-white hover:shadow-sm rounded-md text-gray-400 hover:text-red-500 transition-all border border-transparent hover:border-gray-100 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                    className={`p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                     title="Delete"
                                 >
                                     <Trash2 className="w-4 h-4" />
@@ -667,7 +728,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="fixed inset-0 bg-black/40 z-50"
+                            className="fixed inset-0 bg-black/40 z-[60]"
                             onClick={() => setShowMobileSettings(false)}
                         />
                         {/* Bottom Sheet */}
@@ -676,14 +737,22 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                             animate={{ y: 0 }}
                             exit={{ y: '100%' }}
                             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 max-h-[85vh] flex flex-col shadow-2xl"
+                            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-[60] flex flex-col shadow-2xl"
+                            style={{ maxHeight: '90vh' }}
                         >
-                            {/* Handle */}
-                            <div className="flex justify-center py-3">
+                            {/* Handle + Close */}
+                            <div className="flex items-center justify-between px-4 pt-3 pb-1 shrink-0">
+                                <div className="w-8" />
                                 <div className="w-10 h-1 bg-gray-300 rounded-full" />
+                                <button
+                                    onClick={() => setShowMobileSettings(false)}
+                                    className="w-8 h-8 flex items-center justify-center text-gray-400 active:bg-gray-100 rounded-full"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
                             </div>
                             {/* Tabs */}
-                            <div className="flex items-center border-b border-gray-100 px-4">
+                            <div className="flex items-center border-b border-gray-100 px-4 shrink-0">
                                 <button
                                     onClick={() => setActiveTab('settings')}
                                     className={`flex-1 pb-3 text-sm font-bold transition-colors border-b-2 ${activeTab === 'settings' ? 'text-black border-black' : 'text-gray-400 border-transparent'}`}
@@ -700,8 +769,8 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                                     )}
                                 </button>
                             </div>
-                            {/* Content */}
-                            <div className="flex-1 overflow-y-auto">
+                            {/* Content — scrollable */}
+                            <div className="flex-1 overflow-y-auto overscroll-contain pb-8" style={{ minHeight: 0 }}>
                                 {activeTab === 'settings' && settingsContent()}
                                 {activeTab === 'history' && historyContent()}
                             </div>
