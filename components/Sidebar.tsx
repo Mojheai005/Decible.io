@@ -22,7 +22,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
   const { profile, isLoading: profileLoading } = useUserProfile();
 
   // Workspace State
-  // No change needed for state names if they are already "Workspace". checking UI rendering next.
   const [workspaces, setWorkspaces] = useState<Workspace[]>([
     { id: 'ws-default', name: 'My Workspace' }
   ]);
@@ -32,12 +31,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
   const [editName, setEditName] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on click outside
+  // Profile dropdown state — click-based (hover doesn't work on touch)
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsWorkspaceOpen(false);
         setEditingWorkspaceId(null);
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -254,10 +260,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
         {/* Spacer to push profile to bottom */}
         <div className="flex-1" />
 
-        {/* Bottom User Profile with Click Dropdown - Properly positioned at bottom */}
-        <div className={`pt-4 mt-4 border-t border-gray-100 w-full ${isCollapsed ? 'flex justify-center' : ''} relative group/profile`}>
-          <div
-            className={`flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''}`}
+        {/* Bottom User Profile with Click Dropdown */}
+        <div ref={profileMenuRef} className={`pt-4 mt-4 border-t border-gray-100 w-full ${isCollapsed ? 'flex justify-center' : ''} relative`}>
+          <button
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 cursor-pointer transition-all ${isCollapsed ? 'justify-center' : ''}`}
           >
             {profileLoading ? (
               <div className="w-9 h-9 rounded-full bg-gray-100 animate-pulse" />
@@ -268,7 +275,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
             )}
 
             {!isCollapsed && (
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden text-left">
                 <div className="text-sm font-bold text-gray-900 truncate">{profile?.name || profile?.email?.split('@')[0] || 'User'}</div>
                 <div className="text-xs text-gray-500 truncate">
                   {formatCredits(profile?.remainingCredits || 0)} Credits
@@ -277,41 +284,52 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
             )}
 
             {!isCollapsed && (
-              <ChevronDown className="w-4 h-4 text-gray-400" />
+              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
             )}
-          </div>
+          </button>
 
-          {/* Hover Dropdown Menu - Opens UPWARD since profile is at bottom */}
-          <div className="absolute bottom-full left-2 right-2 mb-2 opacity-0 invisible group-hover/profile:opacity-100 group-hover/profile:visible transition-all duration-200 z-50">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden py-1.5">
-              <button
-                onClick={() => onNavigate('profile')}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          {/* Click Dropdown Menu - Opens UPWARD */}
+          <AnimatePresence>
+            {showProfileMenu && (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 5 }}
+                transition={{ duration: 0.15 }}
+                className="absolute bottom-full left-2 right-2 mb-1 z-50"
               >
-                <Settings className="w-4 h-4 text-gray-400" />
-                <span>Account Settings</span>
-              </button>
-              <button
-                onClick={() => onNavigate('subscription')}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <CreditCard className="w-4 h-4 text-gray-400" />
-                <span>Manage Subscription</span>
-              </button>
-              <div className="border-t border-gray-100 my-1" />
-              <button
-                onClick={async () => {
-                  const supabase = createClient();
-                  await supabase.auth.signOut();
-                  if (onLogout) onLogout();
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Logout</span>
-              </button>
-            </div>
-          </div>
+                <div className="bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden py-1.5">
+                  <button
+                    onClick={() => { onNavigate('profile'); setShowProfileMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Settings className="w-4 h-4 text-gray-400" />
+                    <span>Account Settings</span>
+                  </button>
+                  <button
+                    onClick={() => { onNavigate('subscription'); setShowProfileMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <CreditCard className="w-4 h-4 text-gray-400" />
+                    <span>Manage Subscription</span>
+                  </button>
+                  <div className="border-t border-gray-100 my-1" />
+                  <button
+                    onClick={async () => {
+                      setShowProfileMenu(false);
+                      const supabase = createClient();
+                      await supabase.auth.signOut();
+                      if (onLogout) onLogout();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </motion.div>

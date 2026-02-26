@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Download, ChevronRight, Loader2, RotateCcw, Share2, Pause, Globe, Trash2, Volume2, RotateCw, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Play, Download, ChevronRight, Loader2, RotateCcw, Share2, Pause, Globe, Trash2, Volume2, RotateCw, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import { Slider } from '../ui/Slider';
 import { Toggle } from '../ui/Toggle';
 import { VoiceDropdown } from '../ui/VoiceDropdown';
@@ -73,6 +73,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
 
     // Right Sidebar Tabs
     const [activeTab, setActiveTab] = useState<'settings' | 'history'>('settings');
+    const [historySearch, setHistorySearch] = useState('');
 
     // History State - persisted to localStorage
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -326,7 +327,9 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
         if (!currentTrack?.audioUrl) return;
 
         try {
+            showToast('Starting download...', 'info', 2000);
             const response = await fetch(currentTrack.audioUrl);
+            if (!response.ok) throw new Error('Download failed');
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -336,8 +339,20 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        } catch (err) {
-            window.open(currentTrack.audioUrl, '_blank');
+            showToast('Download complete!', 'success');
+        } catch {
+            try {
+                const link = document.createElement('a');
+                link.href = currentTrack.audioUrl;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('Opening audio — use long-press or right-click to save', 'info', 4000);
+            } catch {
+                showToast('Download failed. Please try again.', 'error');
+            }
         }
     };
 
@@ -485,6 +500,14 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
         </div>
     );
 
+    // Filter history by search query
+    const filteredHistory = historySearch.trim()
+        ? history.filter(item =>
+            item.text.toLowerCase().includes(historySearch.toLowerCase()) ||
+            item.voiceName.toLowerCase().includes(historySearch.toLowerCase())
+        )
+        : history;
+
     // History Panel Content - rendered as function call (NOT <Component />) to avoid remount on parent re-render
     const historyContent = () => (
         <div className="flex flex-col h-full">
@@ -493,19 +516,21 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                     <input
                         type="text"
                         placeholder="Search history..."
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
                         className={`w-full pl-3 pr-4 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-gray-400 transition-colors ${isMobile ? 'py-3' : 'py-2'}`}
                     />
                 </div>
             </div>
 
             <div className={`flex-1 overflow-y-auto space-y-2 ${isMobile ? 'p-3' : 'p-4 space-y-3'}`}>
-                {history.length === 0 ? (
+                {filteredHistory.length === 0 ? (
                     <div className="py-12 text-center text-gray-400">
-                        <p className="font-medium">No history yet</p>
-                        <p className="text-sm mt-1">Generated audio will appear here</p>
+                        <p className="font-medium">{historySearch ? 'No matches found' : 'No history yet'}</p>
+                        <p className="text-sm mt-1">{historySearch ? 'Try a different search term' : 'Generated audio will appear here'}</p>
                     </div>
                 ) : (
-                    history.map((item) => (
+                    filteredHistory.map((item) => (
                         <div
                             key={item.id}
                             className={`group flex flex-col gap-2 rounded-xl cursor-pointer transition-all border ${isMobile ? 'p-3' : 'p-3'} ${currentTrack?.id === item.id ? 'bg-gray-50 border-gray-200 shadow-sm' : 'bg-transparent border-transparent hover:bg-gray-50/50 active:bg-gray-50'}`}
@@ -563,7 +588,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                     </div>
 
                     {/* Floating Generate Button - Mobile Optimized */}
-                    <div className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-auto transition-all duration-500 ${isMobile ? (currentTrack ? 'bottom-36' : 'bottom-4') : (currentTrack ? 'bottom-32' : 'bottom-12')}`}>
+                    <div className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-auto transition-all duration-500 ${isMobile ? (currentTrack ? 'bottom-24' : 'bottom-4') : (currentTrack ? 'bottom-32' : 'bottom-12')}`}>
                         <div className={`bg-white/95 backdrop-blur-xl rounded-full border border-gray-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition-transform ${isMobile ? 'p-1 px-1.5' : 'p-1.5 px-2 hover:scale-[1.01]'}`}>
                             {/* Settings Toggle - Mobile Only */}
                             {isMobile && (
@@ -595,8 +620,8 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                             </button>
 
                             {/* Char Count */}
-                            <div className={`items-center gap-1 text-xs font-bold text-gray-400 px-3 py-1.5 bg-gray-50 rounded-full ${isMobile ? 'hidden' : 'hidden sm:flex'}`}>
-                                {text.length} / 5,000
+                            <div className={`flex items-center gap-1 text-xs font-bold text-gray-400 bg-gray-50 rounded-full ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'}`}>
+                                {text.length.toLocaleString()} / 5,000
                             </div>
                         </div>
                     </div>
@@ -685,7 +710,75 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                 )}
             </AnimatePresence>
 
-            {/* FULL WIDTH STICKY MEDIA PLAYER - Desktop Only, Mobile uses GlobalPlayer */}
+            {/* MOBILE MINI PLAYER - Shows generated audio controls on mobile */}
+            {isMobile && (
+                <AnimatePresence>
+                    {currentTrack && (
+                        <motion.div
+                            initial={{ y: 80 }}
+                            animate={{ y: 0 }}
+                            exit={{ y: 80 }}
+                            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                            className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]"
+                        >
+                            {/* Progress bar */}
+                            <div
+                                className="w-full h-1 bg-gray-100 cursor-pointer"
+                                onClick={(e) => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const pct = (e.clientX - rect.left) / rect.width;
+                                    handleSeek(pct * 100);
+                                }}
+                            >
+                                <div className="h-full bg-gray-900 rounded-r-full" style={{ width: `${progress}%` }} />
+                            </div>
+
+                            <div className="flex items-center gap-3 px-4 py-3">
+                                {/* Track info */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-bold text-gray-900 truncate">{currentTrack.text}</div>
+                                    <div className="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5">
+                                        <span className="font-medium">{currentTrack.voiceName}</span>
+                                        <span className="text-gray-300">·</span>
+                                        <span className="font-mono">{formatTime((progress / 100) * duration)} / {formatTime(duration)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Controls */}
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={handlePlayPause}
+                                        className="w-11 h-11 rounded-full bg-gray-900 text-white flex items-center justify-center active:scale-95 transition-transform"
+                                    >
+                                        {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+                                    </button>
+                                    <button
+                                        onClick={handleDownload}
+                                        className="w-10 h-10 flex items-center justify-center text-gray-500 active:bg-gray-100 rounded-xl"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setCurrentTrack(null);
+                                            setIsPlaying(false);
+                                            if (audioRef.current) {
+                                                audioRef.current.pause();
+                                                audioRef.current.src = '';
+                                            }
+                                        }}
+                                        className="w-10 h-10 flex items-center justify-center text-gray-400 active:bg-red-50 rounded-xl"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            )}
+
+            {/* FULL WIDTH STICKY MEDIA PLAYER - Desktop Only */}
             {!isMobile && (
                 <AnimatePresence>
                     {currentTrack && (

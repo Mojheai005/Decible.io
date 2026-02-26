@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Volume1, Download, ChevronDown, X, Share2 } from 'lucide-react';
 import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { ShaderAvatar } from './ui/ShaderAvatar';
 import { MiniWaveform } from './ui/AudioWaveform';
 import { ShareSheet } from './ui/ShareSheet';
@@ -31,6 +32,7 @@ export const GlobalPlayer: React.FC<GlobalPlayerProps> = ({ isMobile = false }) 
         volume,
         setVolume
     } = useGlobalAudio();
+    const { showToast } = useNotifications();
 
     const [isHoveringProgress, setIsHoveringProgress] = useState(false);
     const [isHoveringVolume, setIsHoveringVolume] = useState(false);
@@ -73,7 +75,9 @@ export const GlobalPlayer: React.FC<GlobalPlayerProps> = ({ isMobile = false }) 
         if (!currentVoice.previewUrl) return;
 
         try {
+            showToast('Starting download...', 'info', 2000);
             const response = await fetch(currentVoice.previewUrl);
+            if (!response.ok) throw new Error('Download failed');
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -83,8 +87,21 @@ export const GlobalPlayer: React.FC<GlobalPlayerProps> = ({ isMobile = false }) 
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        } catch (err) {
-            window.open(currentVoice.previewUrl, '_blank');
+            showToast('Download complete!', 'success');
+        } catch {
+            // Fallback: open in new tab so user can save manually
+            try {
+                const link = document.createElement('a');
+                link.href = currentVoice.previewUrl;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('Opening audio — use long-press or right-click to save', 'info', 4000);
+            } catch {
+                showToast('Download failed. Please try again.', 'error');
+            }
         }
     };
 
@@ -103,7 +120,8 @@ export const GlobalPlayer: React.FC<GlobalPlayerProps> = ({ isMobile = false }) 
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 100, opacity: 0 }}
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                        className="fixed bottom-[76px] left-0 right-0 bg-white/98 backdrop-blur-xl border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 px-4 pt-3 pb-4"
+                        className="fixed left-0 right-0 bg-white/98 backdrop-blur-xl border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-[45] px-4 pt-3 pb-4"
+                        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
                     >
                         {/* Progress bar at top - full width, larger touch target */}
                         <div
@@ -162,7 +180,7 @@ export const GlobalPlayer: React.FC<GlobalPlayerProps> = ({ isMobile = false }) 
                             </div>
 
                             {/* Controls - larger touch targets (48px) */}
-                            <div className="flex items-center gap-0.5">
+                            <div className="flex items-center gap-1">
                                 <button
                                     onClick={togglePlay}
                                     className="w-12 h-12 rounded-full bg-gray-900 text-white flex items-center justify-center active:scale-95 transition-transform shadow-lg"
@@ -175,17 +193,17 @@ export const GlobalPlayer: React.FC<GlobalPlayerProps> = ({ isMobile = false }) 
                                 </button>
 
                                 <button
-                                    onClick={() => setShowShareSheet(true)}
-                                    className="w-11 h-11 flex items-center justify-center text-gray-500 active:bg-gray-100 rounded-xl transition-all"
+                                    onClick={handleDownload}
+                                    className="w-10 h-10 flex items-center justify-center text-gray-500 active:bg-gray-100 rounded-xl transition-all"
                                 >
-                                    <Share2 className="w-5 h-5" />
+                                    <Download className="w-4.5 h-4.5" />
                                 </button>
 
                                 <button
                                     onClick={clearVoice}
-                                    className="w-11 h-11 flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-600 rounded-xl transition-all"
+                                    className="w-10 h-10 flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-600 rounded-xl transition-all"
                                 >
-                                    <X className="w-5 h-5" />
+                                    <X className="w-4.5 h-4.5" />
                                 </button>
                             </div>
                         </div>
