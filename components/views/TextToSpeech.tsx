@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ShaderAvatar } from '../ui/ShaderAvatar';
 import { useGenerate } from '@/hooks/useGenerate';
 import { useVoices } from '@/hooks/useVoices';
-import { useUserProfile } from '@/hooks/useUserProfile';
+import { useUserProfile, updateCreditsOptimistic } from '@/hooks/useUserProfile';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { validateTTSText, sanitizeText } from '@/lib/validation';
 
@@ -236,11 +236,23 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
 
                 showToast('Audio generated successfully!', 'success');
 
-                // Trigger profile refetch across all components (sidebar, etc.)
-                window.dispatchEvent(new Event('credits-updated'));
+                // Optimistic credit update — use the balance from the API response instantly
+                // No network round-trip needed; Supabase Realtime will sync if anything drifts
+                const newRemaining = result.usage?.creditsRemaining;
+                const usedAmount = result.usage?.creditsUsed;
+                if (newRemaining != null) {
+                    updateCreditsOptimistic(newRemaining, usedAmount);
+                    // Also dispatch event for any legacy listeners
+                    window.dispatchEvent(new CustomEvent('credits-updated', {
+                        detail: { remainingCredits: newRemaining, creditsUsed: usedAmount },
+                    }));
+                } else {
+                    // Fallback: full refetch if API didn't return balance
+                    window.dispatchEvent(new Event('credits-updated'));
+                }
 
                 // Contextual upgrade nudge — show when remaining credits get low
-                const creditsLeft = (profile?.remainingCredits ?? 50000) - validation.sanitized.length;
+                const creditsLeft = newRemaining ?? ((profile?.remainingCredits ?? 50000) - validation.sanitized.length);
                 const totalCredits = profile?.totalCredits ?? 1;
                 const isOnFreePlan = !profile?.plan || profile.plan === 'free';
                 if (creditsLeft > 0 && creditsLeft / totalCredits < 0.25 && isOnFreePlan) {

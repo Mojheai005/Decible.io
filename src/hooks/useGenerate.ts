@@ -23,6 +23,8 @@ interface GenerationResult {
     taskId?: string
     usage?: {
         characters: number
+        creditsUsed?: number
+        creditsRemaining?: number
     }
     error?: string
     // Legacy support for TextToSpeech.tsx check
