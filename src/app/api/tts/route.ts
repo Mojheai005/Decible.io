@@ -226,10 +226,10 @@ export async function POST(request: NextRequest) {
             text,
             voice: voiceNameForApi,
             voice_settings: voice_settings ? {
-                stability: voice_settings.stability ?? 0.5,
-                similarity_boost: voice_settings.similarity_boost ?? 0.75,
-                speed: voice_settings.speed ?? 1.0,
-                style: voice_settings.style ?? 0,
+                stability: Math.round((voice_settings.stability ?? 0.5) * 100) / 100,
+                similarity_boost: Math.round((voice_settings.similarity_boost ?? 0.75) * 100) / 100,
+                speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
+                style: Math.round((voice_settings.style ?? 0) * 100) / 100,
             } : undefined,
         });
 
