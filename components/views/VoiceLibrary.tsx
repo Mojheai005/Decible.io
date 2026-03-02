@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Search, Filter, Plus, ChevronDown, ChevronLeft, ChevronRight, Globe, Loader2, Star, Play, Pause, ArrowUpDown, X, MessageSquare, Tv, BookOpen, Smartphone, User, FolderOpen } from 'lucide-react';
+import { Search, Filter, Plus, ChevronDown, ChevronLeft, ChevronRight, Globe, Loader2, Star, Play, Pause, ArrowUpDown, X, MessageSquare, Tv, BookOpen, Smartphone, User, FolderOpen, Headphones, Radio, Users } from 'lucide-react';
 import { ShaderAvatar, ShaderType } from '../ui/ShaderAvatar';
 import { useVoices, Voice as ApiVoice } from '@/hooks/useVoices';
 import { useGlobalAudio } from '@/contexts/GlobalAudioContext';
@@ -11,7 +11,7 @@ interface VoiceLibraryProps {
   initialTab?: string;
 }
 
-// YOUR ORIGINAL CATEGORIES with All button first
+// All 9 categories matching voices-data.ts
 const CATEGORIES = [
   { id: '', label: 'All', icon: FolderOpen },
   { id: 'Commentary', label: 'Commentary', icon: MessageSquare },
@@ -19,6 +19,10 @@ const CATEGORIES = [
   { id: 'Storytelling', label: 'Storytelling', icon: BookOpen },
   { id: 'Short Videos', label: 'Short Videos', icon: Smartphone },
   { id: 'Crime & Suspense', label: 'Crime & Suspense', icon: User },
+  { id: 'Character', label: 'Character', icon: Users },
+  { id: 'Meditation & ASMR', label: 'Meditation & ASMR', icon: Headphones },
+  { id: 'Announcer & Radio', label: 'Announcer & Radio', icon: Radio },
+  { id: 'Conversational', label: 'Conversational', icon: MessageSquare },
 ];
 
 // Voice use case categories
@@ -42,7 +46,7 @@ const USE_CASES = [
     label: 'Engaging character voices',
     icon: '🎭',
     bgColor: 'bg-gradient-to-br from-slate-100 to-gray-200',
-    searchTerm: 'character'
+    searchTerm: 'Character'
   },
   {
     id: 'studio',
@@ -66,11 +70,25 @@ const USE_CASES = [
     searchTerm: 'Documentary'
   },
   {
-    id: 'asmr',
-    label: 'Relaxing voices for ASMR',
-    icon: '🎧',
+    id: 'meditation',
+    label: 'Calming meditation & ASMR',
+    icon: '🧘',
     bgColor: 'bg-gradient-to-br from-rose-100 to-pink-200',
-    searchTerm: 'calm'
+    searchTerm: 'Meditation & ASMR'
+  },
+  {
+    id: 'radio',
+    label: 'Professional announcer voices',
+    icon: '📻',
+    bgColor: 'bg-gradient-to-br from-cyan-100 to-sky-200',
+    searchTerm: 'Announcer & Radio'
+  },
+  {
+    id: 'conversational',
+    label: 'Natural conversation voices',
+    icon: '💬',
+    bgColor: 'bg-gradient-to-br from-lime-100 to-green-200',
+    searchTerm: 'Conversational'
   },
 ];
 

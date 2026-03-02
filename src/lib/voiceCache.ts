@@ -5,8 +5,8 @@
 
 import { Voice } from '@/hooks/useVoices'
 
-const CACHE_KEY = 'nmm_voices_v2'
-const CACHE_VERSION = '2.0'
+const CACHE_KEY = 'nmm_voices_v3'
+const CACHE_VERSION = '3.0'
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 // Minimal voice data for cache (reduces size by ~70%)
