@@ -113,7 +113,7 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         throw new Error('Missing KIEAI_API_KEY environment variable')
     }
 
-    const maxAttempts = 25 // 25 attempts * 2 seconds = 50 seconds max (fits within Vercel 60s limit)
+    const maxAttempts = 45 // 45 attempts * 2 seconds = 90 seconds max
     const pollInterval = 2000 // 2 seconds
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -160,7 +160,7 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         await new Promise(resolve => setTimeout(resolve, pollInterval))
     }
 
-    throw new Error('TTS generation timed out after 50 seconds')
+    throw new Error('TTS generation timed out after 90 seconds')
 }
 
 /**

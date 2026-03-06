@@ -7,7 +7,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib/rate-limiter';
 
 // Extend Vercel serverless function timeout (max 300s on Pro, 60s on Hobby)
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 // Get authenticated user
 async function getAuthenticatedUser() {
