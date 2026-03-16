@@ -36,7 +36,7 @@ export const LandingPage: React.FC = () => {
     },
     {
       question: "Is Decible affordable for new and growing creators?",
-      answer: "We designed our pricing specifically for creators at every stage. Start free with 5,000 credits to test the platform. Our paid plans start at just ₹395/month — a fraction of what you'd pay for human voiceover artists or competitors like ElevenLabs. As your channel grows, Decible scales with you."
+      answer: "We designed our pricing specifically for creators at every stage. Start free with 5,000 credits to test the platform. Our paid plans start at just ₹299/month — a fraction of what you'd pay for human voiceover artists or competitors like ElevenLabs. As your channel grows, Decible scales with you."
     }
   ];
 
@@ -260,9 +260,9 @@ export const LandingPage: React.FC = () => {
               transition={{ duration: 0.6, delay: 0.1 }}
               className="text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight text-gray-900 mb-6 leading-[1.1]"
             >
-              Best AI Voiceover Tool
+              Create Realistic AI Voiceover
               <br />
-              <span className="text-gray-400">for Faceless YouTube.</span>
+              <span className="text-gray-400">at just ₹3 per Minute</span>
             </motion.h1>
 
             {/* Subheadline - 18px */}
@@ -272,7 +272,7 @@ export const LandingPage: React.FC = () => {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="text-lg text-gray-500 mb-8 max-w-2xl mx-auto leading-relaxed"
             >
-              Real human voices built for YouTube: Alive with human emotions, customised for every niche, priced for creators who want to scale.
+              Don&apos;t have a mic or hate recording your voice? Just type your script and generate realistic, emotion-rich voiceovers for your videos instantly. Pay easily with UPI.
             </motion.p>
 
             {/* CTA Buttons - Proper 48px height touch targets */}
@@ -949,7 +949,7 @@ export const LandingPage: React.FC = () => {
                     <p className="text-xs text-gray-400">/month</p>
                   </div>
                   <div className="col-span-3 px-4 py-5 text-center border-l border-gray-200 bg-emerald-50">
-                    <span className="text-lg font-bold text-emerald-600">{currency === 'USD' ? '$17' : '₹1,395'}</span>
+                    <span className="text-lg font-bold text-emerald-600">{currency === 'USD' ? '$9' : '₹699'}</span>
                     <p className="text-xs text-emerald-600 font-medium">/month</p>
                   </div>
                 </div>

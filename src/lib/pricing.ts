@@ -78,8 +78,8 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Starter',
         displayName: 'Starter',
         description: 'Great for content creators getting started',
-        priceMonthly: 39500, // ₹395
-        priceMonthlyUSD: 500, // $5
+        priceMonthly: 29900, // ₹299
+        priceMonthlyUSD: 400, // $4
         credits: 35000,
         topupRate: 1680, // ₹16.80 per 1000 credits
 
@@ -104,10 +104,8 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Creator',
         displayName: 'Creator',
         description: 'Ideal for professional content creators',
-        priceMonthly: 139500, // ₹1395 after first month
-        priceFirstMonth: 79500, // ₹795 first month
-        priceMonthlyUSD: 1700, // $17
-        priceFirstMonthUSD: 1000, // $10
+        priceMonthly: 69900, // ₹699
+        priceMonthlyUSD: 900, // $9
         credits: 150000,
         topupRate: 1220, // ₹12.20 per 1000 credits
 
@@ -135,8 +133,8 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Pro',
         displayName: 'Professional',
         description: 'For businesses and power users',
-        priceMonthly: 219500, // ₹2195
-        priceMonthlyUSD: 2700, // $27
+        priceMonthly: 199900, // ₹1999
+        priceMonthlyUSD: 2500, // $25
         credits: 500000,
         topupRate: 965, // ₹9.65 per 1000 credits
 
@@ -164,8 +162,8 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Advanced',
         displayName: 'Enterprise',
         description: 'For agencies and large teams',
-        priceMonthly: 349500, // ₹3495
-        priceMonthlyUSD: 4200, // $42
+        priceMonthly: 299900, // ₹2999
+        priceMonthlyUSD: 3700, // $37
         credits: 1000000,
         topupRate: 650, // ₹6.50 per 1000 credits
 
