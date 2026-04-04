@@ -56,10 +56,11 @@ export async function POST(request: NextRequest) {
             const result = await mammoth.extractRawText({ buffer });
             extractedText = result.value;
         } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-            // PDF parsing using pdf-parse v2 class API
+            // PDF parsing using pdf-parse v2 class API (requires Uint8Array)
             // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { PDFParse: PDFParser } = require('pdf-parse') as { PDFParse: new (buf: Buffer) => { load: () => Promise<void>; getText: () => Promise<string>; destroy: () => void } };
-            const parser = new PDFParser(buffer);
+            const { PDFParse: PDFParser } = require('pdf-parse') as { PDFParse: new (buf: Uint8Array) => { load: () => Promise<void>; getText: () => Promise<string>; destroy: () => void } };
+            const uint8 = new Uint8Array(buffer);
+            const parser = new PDFParser(uint8);
             await parser.load();
             extractedText = await parser.getText();
             parser.destroy();

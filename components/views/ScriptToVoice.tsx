@@ -37,6 +37,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
     const [speed, setSpeed] = useState(1.0);
     const [stability, setStability] = useState(50);
     const [similarity, setSimilarity] = useState(75);
+    const [style, setStyle] = useState(0);
 
     // Audio player
     const [isPlaying, setIsPlaying] = useState(false);
@@ -180,7 +181,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
             {
                 stability: stability / 100,
                 similarity: similarity / 100,
-                style: 0,
+                style: style / 100,
                 speed,
                 useSpeakerBoost: true,
             }
@@ -341,7 +342,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                 onNavigateToLibrary={() => onNavigate?.('library')}
                             />
 
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs text-gray-500 mb-1 block">Speed</label>
                                     <input
@@ -371,6 +372,16 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                         className="w-full accent-gray-900"
                                     />
                                     <span className="text-xs text-gray-500">{similarity}%</span>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-500 mb-1 block">Style Exaggeration</label>
+                                    <input
+                                        type="range"
+                                        min={0} max={100} value={style}
+                                        onChange={(e) => setStyle(Number(e.target.value))}
+                                        className="w-full accent-gray-900"
+                                    />
+                                    <span className="text-xs text-gray-500">{style}%</span>
                                 </div>
                             </div>
                         </div>

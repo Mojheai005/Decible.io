@@ -1,6 +1,6 @@
 // ===========================================
 // TEXT CHUNKER — Split scripts at paragraph boundaries
-// Target: 1500-1800 words per chunk
+// Target: 1500-1800 CHARACTERS per chunk
 // Never splits mid-sentence
 // ===========================================
 
@@ -18,27 +18,26 @@ export interface ChunkPlan {
     totalCredits: number
 }
 
-const MIN_WORDS_PER_CHUNK = 1200
-const MAX_WORDS_PER_CHUNK = 1800
-const TARGET_WORDS_PER_CHUNK = 1500
+const MIN_CHARS_PER_CHUNK = 800
+const MAX_CHARS_PER_CHUNK = 1800
+const MIN_CHARS_FOR_MERGE = 400
 
 function countWords(text: string): number {
     return text.trim().split(/\s+/).filter(Boolean).length
 }
 
 /**
- * Split a single long paragraph into sentence-bounded chunks.
- * Used when a paragraph exceeds MAX_WORDS_PER_CHUNK.
+ * Split a single long paragraph into sentence-bounded segments.
+ * Used when a paragraph exceeds MAX_CHARS_PER_CHUNK on its own.
  */
 function splitLongParagraph(paragraph: string): string[] {
-    // Split at sentence boundaries: period, exclamation, question mark followed by space
     const sentences = paragraph.match(/[^.!?]+[.!?]+[\s]*/g) || [paragraph]
     const result: string[] = []
     let current = ''
 
     for (const sentence of sentences) {
         const combined = current + sentence
-        if (countWords(combined) > MAX_WORDS_PER_CHUNK && current) {
+        if (combined.length > MAX_CHARS_PER_CHUNK && current) {
             result.push(current.trim())
             current = sentence
         } else {
@@ -55,22 +54,21 @@ function splitLongParagraph(paragraph: string): string[] {
 
 /**
  * Split text into chunks at paragraph boundaries.
- * Each chunk targets 1500-1800 words.
+ * Each chunk stays under 1800 characters.
  * Falls back to sentence splitting for very long paragraphs.
  */
 export function chunkText(fullText: string): ChunkPlan {
-    // Normalize line endings and split by double newlines (paragraph boundaries)
     const normalized = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     const rawParagraphs = normalized.split(/\n\s*\n/)
     const paragraphs = rawParagraphs
         .map(p => p.trim())
         .filter(p => p.length > 0)
 
-    // If total text is small enough for one chunk, return as-is
     const totalWords = countWords(fullText)
-    const totalChars = fullText.length
+    const totalChars = fullText.trim().length
 
-    if (totalWords <= MAX_WORDS_PER_CHUNK) {
+    // If total text fits in one chunk, return as-is
+    if (totalChars <= MAX_CHARS_PER_CHUNK) {
         return {
             chunks: [{
                 index: 0,
@@ -84,59 +82,58 @@ export function chunkText(fullText: string): ChunkPlan {
         }
     }
 
-    // Flatten paragraphs — split any that are too long
+    // Flatten paragraphs — split any that are too long on their own
     const segments: string[] = []
     for (const para of paragraphs) {
-        if (countWords(para) > MAX_WORDS_PER_CHUNK) {
+        if (para.length > MAX_CHARS_PER_CHUNK) {
             segments.push(...splitLongParagraph(para))
         } else {
             segments.push(para)
         }
     }
 
-    // Accumulate segments into chunks
+    // Accumulate segments into chunks based on CHARACTER limit
     const chunks: TextChunk[] = []
     let currentText = ''
-    let currentWords = 0
 
     for (const segment of segments) {
-        const segmentWords = countWords(segment)
+        const combined = currentText ? `${currentText}\n\n${segment}` : segment
 
-        // If adding this segment would exceed max, finalize current chunk
-        if (currentWords + segmentWords > MAX_WORDS_PER_CHUNK && currentText) {
+        if (combined.length > MAX_CHARS_PER_CHUNK && currentText) {
+            // Current chunk is full — finalize it
+            const trimmed = currentText.trim()
             chunks.push({
                 index: chunks.length,
-                text: currentText.trim(),
-                wordCount: currentWords,
-                charCount: currentText.trim().length,
+                text: trimmed,
+                wordCount: countWords(trimmed),
+                charCount: trimmed.length,
             })
             currentText = segment
-            currentWords = segmentWords
         } else {
-            // Add paragraph separator between segments within a chunk
-            currentText = currentText ? `${currentText}\n\n${segment}` : segment
-            currentWords += segmentWords
+            currentText = combined
         }
     }
 
     // Push remaining text as final chunk
     if (currentText.trim()) {
+        const trimmed = currentText.trim()
         chunks.push({
             index: chunks.length,
-            text: currentText.trim(),
-            wordCount: countWords(currentText),
-            charCount: currentText.trim().length,
+            text: trimmed,
+            wordCount: countWords(trimmed),
+            charCount: trimmed.length,
         })
     }
 
     // Merge tiny last chunk into previous if it's too small
     if (chunks.length > 1) {
         const last = chunks[chunks.length - 1]
-        if (last.wordCount < MIN_WORDS_PER_CHUNK / 3) {
+        if (last.charCount < MIN_CHARS_FOR_MERGE) {
             const prev = chunks[chunks.length - 2]
-            prev.text = `${prev.text}\n\n${last.text}`
-            prev.wordCount = countWords(prev.text)
-            prev.charCount = prev.text.length
+            const merged = `${prev.text}\n\n${last.text}`
+            prev.text = merged
+            prev.wordCount = countWords(merged)
+            prev.charCount = merged.length
             chunks.pop()
         }
     }
