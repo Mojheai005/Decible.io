@@ -32,6 +32,7 @@ interface CreateOrderRequest {
     type: 'subscription' | 'topup' | 'upgrade';
     planId?: string;
     topupPackageId?: string;
+    billingPeriod?: 'monthly' | 'yearly';
 }
 
 export async function POST(request: NextRequest) {
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
 
         // 3. Parse request body
         const body = await request.json() as CreateOrderRequest;
-        const { type, planId, topupPackageId } = body;
+        const { type, planId, topupPackageId, billingPeriod = 'monthly' } = body;
 
         let amount: number;
         let credits: number;
@@ -98,11 +99,13 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            // First-month promo: new users on free tier get discounted Creator price
-            const isFirstMonth = userProfile.subscription_tier === 'free' && plan.id === 'creator';
-            amount = getEffectivePrice(plan, isFirstMonth);
-            credits = plan.credits;
-            description = `${plan.displayName} Plan${isFirstMonth ? ' (First Month Special)' : ''}`;
+            // First-month promo: new users on free tier get discounted Creator price (monthly only)
+            const isFirstMonth = billingPeriod === 'monthly' && userProfile.subscription_tier === 'free' && plan.id === 'creator';
+            amount = getEffectivePrice(plan, isFirstMonth, billingPeriod);
+            credits = billingPeriod === 'yearly' ? plan.credits : plan.credits;
+            description = billingPeriod === 'yearly'
+                ? `${plan.displayName} Plan (Yearly)`
+                : `${plan.displayName} Plan${isFirstMonth ? ' (First Month Special)' : ''}`;
 
         } else if (type === 'topup') {
             if (!topupPackageId) {
@@ -159,6 +162,7 @@ export async function POST(request: NextRequest) {
                 planId: planId || '',
                 topupPackageId: topupPackageId || '',
                 credits: credits.toString(),
+                billingPeriod: billingPeriod,
             },
         });
 
@@ -175,6 +179,7 @@ export async function POST(request: NextRequest) {
             amount: amount,
             currency: 'INR',
             credits: credits,
+            billing_period: billingPeriod,
             status: 'created',
             razorpay_order_id: order.id,
             ip_address: clientIp,

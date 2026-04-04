@@ -33,7 +33,7 @@ interface RazorpayResponse {
 }
 
 interface UsePaymentResult {
-    initiatePayment: (planId: string, orderType?: string) => Promise<void>
+    initiatePayment: (planId: string, orderType?: string, billingPeriod?: 'monthly' | 'yearly') => Promise<void>
     isProcessing: boolean
     processingPlanId: string | null
     error: string | null
@@ -58,7 +58,7 @@ export function usePayment(): UsePaymentResult {
     const [processingPlanId, setProcessingPlanId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
 
-    const initiatePayment = useCallback(async (planId: string, orderType = 'subscription') => {
+    const initiatePayment = useCallback(async (planId: string, orderType = 'subscription', billingPeriod: 'monthly' | 'yearly' = 'monthly') => {
         setIsProcessing(true)
         setProcessingPlanId(planId)
         setError(null)
@@ -74,7 +74,7 @@ export function usePayment(): UsePaymentResult {
             const orderResponse = await fetch('/api/payments/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: orderType, planId }),
+                body: JSON.stringify({ type: orderType, planId, billingPeriod }),
             })
 
             if (!orderResponse.ok) {

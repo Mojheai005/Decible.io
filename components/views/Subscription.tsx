@@ -5,7 +5,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { usePayment } from '@/hooks/usePayment';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Loader2, Check, Crown, ArrowRight, Star, Users, Sparkles, Zap, Shield } from 'lucide-react';
-import { SUBSCRIPTION_PLANS, getCurrencySymbol, getPlanPrice, getPlanFirstMonthPrice } from '@/lib/pricing';
+import { SUBSCRIPTION_PLANS, getCurrencySymbol, getPlanPrice, getPlanYearlyPrice, getPlanFirstMonthPrice } from '@/lib/pricing';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface SubscriptionProps {
@@ -32,7 +32,7 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
     const currentPlanIndex = SUBSCRIPTION_PLANS.findIndex(p => p.id === currentTier);
 
     const handleUpgrade = async (planId: string) => {
-        await initiatePayment(planId, 'subscription');
+        await initiatePayment(planId, 'subscription', billingPeriod);
     };
 
     // Calculate videos per month based on credits (roughly 2500 credits = 1 video)
@@ -119,7 +119,7 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
                     >
                         Yearly
                         <span className="text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded font-bold">
-                            -20%
+                            2 FREE
                         </span>
                     </button>
                 </div>
@@ -133,7 +133,8 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
                     const monthlyPrice = getPlanPrice(plan, currency) / 100;
                     const firstMonthPrice = getPlanFirstMonthPrice(plan, currency);
                     const firstMonthAmount = firstMonthPrice ? firstMonthPrice / 100 : null;
-                    const yearlyPrice = Math.floor(monthlyPrice * 0.8);
+                    const yearlyTotal = getPlanYearlyPrice(plan, currency) / 100;
+                    const yearlyPerMonth = Math.floor(yearlyTotal / 12);
                     const isPopular = plan.id === 'creator';
                     const videosPerMonth = getVideosPerMonth(plan.credits);
                     const hasPromo = !!firstMonthAmount && !isCurrentPlan && canUpgrade && billingPeriod === 'monthly';
@@ -195,13 +196,13 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
                                     <>
                                         <div className="flex items-baseline gap-1">
                                             <span className="text-3xl font-bold text-gray-900">
-                                                {sym}{(billingPeriod === 'yearly' ? yearlyPrice : monthlyPrice).toLocaleString()}
+                                                {sym}{(billingPeriod === 'yearly' ? yearlyPerMonth : monthlyPrice).toLocaleString()}
                                             </span>
                                             <span className="text-gray-500 text-sm">/mo</span>
                                         </div>
                                         {billingPeriod === 'yearly' && (
                                             <div className="text-xs text-green-600 font-medium mt-1">
-                                                Save {sym}{((monthlyPrice - yearlyPrice) * 12).toLocaleString()}/year
+                                                {sym}{yearlyTotal.toLocaleString()}/year (Save 2 months)
                                             </div>
                                         )}
                                     </>

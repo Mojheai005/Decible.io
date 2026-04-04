@@ -21,6 +21,7 @@ CREATE TABLE subscription_plans (
     description TEXT,
     -- Pricing (in paise - 100 paise = 1 INR)
     price_monthly INTEGER NOT NULL,
+    price_yearly INTEGER, -- Yearly price (10x monthly, save 2 months)
     price_first_month INTEGER, -- For promotional pricing (creator plan)
     -- Credits
     credits_monthly INTEGER NOT NULL,
@@ -67,37 +68,37 @@ INSERT INTO subscription_plans (
     '["5,000 credits/month", "5 saved voice slots", "Standard quality audio", "1,000 chars/generation", "10 generations/day", "Community support", "Basic voice library"]'::jsonb,
     NULL, NULL, 1
 ),
--- Starter Plan - ₹395/month
+-- Starter Plan - ₹299/month
 (
     'starter', 'Starter', 'Starter', 'Great for content creators getting started',
-    39500, NULL, 35000, 1680,
+    29900, NULL, 35000, 1680,
     10, 3000, 50, 10,
     false, true, false, false, false, false, false, 'high',
     '["35,000 credits/month", "10 saved voice slots", "High quality audio", "3,000 chars/generation", "50 generations/day", "Priority email support", "Full voice library", "Voice preview", "Generation history"]'::jsonb,
     NULL, NULL, 2
 ),
--- Creator Plan - ₹795 first month, ₹1395 after
+-- Creator Plan - ₹699/month
 (
     'creator', 'Creator', 'Creator', 'Ideal for professional content creators',
-    139500, 79500, 150000, 1220,
+    69900, NULL, 150000, 1220,
     20, 5000, 150, 30,
     true, true, false, false, false, true, true, 'high',
     '["150,000 credits/month", "20 saved voice slots", "High quality audio", "5,000 chars/generation", "150 generations/day", "API access", "Priority support", "Full voice library", "Bulk generation", "Analytics dashboard", "Voice cloning (coming soon)"]'::jsonb,
     'Popular', '#8B5CF6', 3
 ),
--- Pro Plan - ₹2195/month
+-- Pro Plan - ₹1999/month
 (
     'pro', 'Pro', 'Professional', 'For businesses and power users',
-    219500, NULL, 500000, 965,
+    199900, NULL, 500000, 965,
     30, 10000, 500, 60,
     true, true, true, false, false, true, true, 'ultra',
     '["500,000 credits/month", "30 saved voice slots", "Ultra quality audio", "10,000 chars/generation", "500 generations/day", "Full API access", "Priority support", "Custom voice creation", "Bulk generation", "Advanced analytics", "Webhook integrations", "Commercial license"]'::jsonb,
     'Best Value', '#10B981', 4
 ),
--- Advanced Plan - ₹3495/month
+-- Advanced Plan - ₹2999/month
 (
     'advanced', 'Advanced', 'Enterprise', 'For agencies and large teams',
-    349500, NULL, 1000000, 650,
+    299900, NULL, 1000000, 650,
     50, 15000, 1000, 100,
     true, true, true, true, true, true, true, 'ultra',
     '["1,000,000 credits/month", "50 saved voice slots", "Ultra quality audio", "15,000 chars/generation", "Unlimited generations", "Full API access", "Dedicated account manager", "Custom voice creation", "White label option", "Team collaboration", "SLA guarantee", "Custom integrations"]'::jsonb,
@@ -151,6 +152,7 @@ CREATE TABLE user_profiles (
     subscription_start_date TIMESTAMP WITH TIME ZONE,
     subscription_end_date TIMESTAMP WITH TIME ZONE,
     subscription_cancel_at TIMESTAMP WITH TIME ZONE,
+    billing_period TEXT DEFAULT 'monthly' CHECK (billing_period IN ('monthly', 'yearly')),
     is_first_month BOOLEAN DEFAULT true, -- For creator plan promo pricing
 
     -- Credits
@@ -311,6 +313,7 @@ CREATE TABLE payment_orders (
     order_type TEXT NOT NULL CHECK (order_type IN ('subscription', 'topup', 'upgrade')),
     plan_id TEXT REFERENCES subscription_plans(id),
     topup_package_id TEXT REFERENCES topup_packages(id),
+    billing_period TEXT DEFAULT 'monthly' CHECK (billing_period IN ('monthly', 'yearly')),
 
     -- Amount
     amount INTEGER NOT NULL, -- in paise

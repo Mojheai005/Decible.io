@@ -15,8 +15,10 @@ export interface SubscriptionPlan {
     displayName: string;
     description: string;
     priceMonthly: number; // in paise
+    priceYearly: number; // in paise (full year price, 10x monthly = 2 months free)
     priceFirstMonth?: number; // promotional price in paise
     priceMonthlyUSD: number; // in cents
+    priceYearlyUSD: number; // in cents (full year price)
     priceFirstMonthUSD?: number; // promotional price in cents
     credits: number;
     topupRate: number; // paise per 1000 credits
@@ -53,7 +55,9 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Free Forever',
         description: 'Perfect for trying out our voice generation',
         priceMonthly: 0,
+        priceYearly: 0,
         priceMonthlyUSD: 0,
+        priceYearlyUSD: 0,
         credits: 5000,
         topupRate: 0, // No topup for free
 
@@ -79,7 +83,9 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Starter',
         description: 'Great for content creators getting started',
         priceMonthly: 29900, // ₹299
+        priceYearly: 299000, // ₹2,990/year (10x monthly, save 2 months)
         priceMonthlyUSD: 400, // $4
+        priceYearlyUSD: 4000, // $40/year
         credits: 35000,
         topupRate: 1680, // ₹16.80 per 1000 credits
 
@@ -105,7 +111,9 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Creator',
         description: 'Ideal for professional content creators',
         priceMonthly: 69900, // ₹699
+        priceYearly: 699000, // ₹6,990/year (10x monthly, save 2 months)
         priceMonthlyUSD: 900, // $9
+        priceYearlyUSD: 9000, // $90/year
         credits: 150000,
         topupRate: 1220, // ₹12.20 per 1000 credits
 
@@ -134,7 +142,9 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Professional',
         description: 'For businesses and power users',
         priceMonthly: 199900, // ₹1999
+        priceYearly: 1999000, // ₹19,990/year (10x monthly, save 2 months)
         priceMonthlyUSD: 2500, // $25
+        priceYearlyUSD: 25000, // $250/year
         credits: 500000,
         topupRate: 965, // ₹9.65 per 1000 credits
 
@@ -163,7 +173,9 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         displayName: 'Enterprise',
         description: 'For agencies and large teams',
         priceMonthly: 299900, // ₹2999
+        priceYearly: 2999000, // ₹29,990/year (10x monthly, save 2 months)
         priceMonthlyUSD: 3700, // $37
+        priceYearlyUSD: 37000, // $370/year
         credits: 1000000,
         topupRate: 650, // ₹6.50 per 1000 credits
 
@@ -306,6 +318,10 @@ export function getPlanPrice(plan: SubscriptionPlan, currency: Currency): number
     return currency === 'USD' ? plan.priceMonthlyUSD : plan.priceMonthly;
 }
 
+export function getPlanYearlyPrice(plan: SubscriptionPlan, currency: Currency): number {
+    return currency === 'USD' ? plan.priceYearlyUSD : plan.priceYearly;
+}
+
 export function getPlanFirstMonthPrice(plan: SubscriptionPlan, currency: Currency): number | undefined {
     if (currency === 'USD') return plan.priceFirstMonthUSD;
     return plan.priceFirstMonth;
@@ -361,7 +377,10 @@ export function getSavingsVsFree(plan: SubscriptionPlan): string {
     return `${multiplier}x more credits`;
 }
 
-export function getEffectivePrice(plan: SubscriptionPlan, isFirstMonth: boolean): number {
+export function getEffectivePrice(plan: SubscriptionPlan, isFirstMonth: boolean, billingPeriod: 'monthly' | 'yearly' = 'monthly'): number {
+    if (billingPeriod === 'yearly') {
+        return plan.priceYearly;
+    }
     if (isFirstMonth && plan.priceFirstMonth) {
         return plan.priceFirstMonth;
     }

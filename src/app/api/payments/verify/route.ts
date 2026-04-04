@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const orderData = order as { id: string; status: string; credits: number; plan_id: string };
+        const orderData = order as { id: string; status: string; credits: number; plan_id: string; billing_period?: string };
 
         if (orderData.status === 'completed') {
             return NextResponse.json({
@@ -134,9 +134,21 @@ export async function POST(request: NextRequest) {
         };
 
         const newTier = tierMapping[orderData.plan_id] || 'starter';
+        const isYearly = orderData.billing_period === 'yearly';
+        const now = new Date();
+        const subscriptionEndDate = isYearly
+            ? new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())
+            : new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+
         await admin
             .from('user_profiles')
-            .update({ subscription_tier: newTier })
+            .update({
+                subscription_tier: newTier,
+                billing_period: orderData.billing_period || 'monthly',
+                subscription_start_date: now.toISOString(),
+                subscription_end_date: subscriptionEndDate.toISOString(),
+                subscription_status: 'active',
+            })
             .eq('id', user.id);
 
 
