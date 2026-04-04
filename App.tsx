@@ -8,6 +8,7 @@ import { VoiceLibrary } from './components/views/VoiceLibrary';
 import { Profile } from './components/views/Profile';
 import { Subscription } from './components/views/Subscription';
 import { HelpCenter } from './components/views/HelpCenter';
+import { ScriptToVoice } from './components/views/ScriptToVoice';
 import { Bell, Menu, FileAudio, Coins, HelpCircle } from 'lucide-react';
 import DecibleLogo from './components/DecibleLogo';
 import { useUserProfile, clearProfileCache, prefetchProfile } from './src/hooks/useUserProfile';
@@ -116,6 +117,8 @@ const AppContent: React.FC = () => {
         );
       case 'help':
         return <HelpCenter />;
+      case 'script-to-voice':
+        return <ScriptToVoice onNavigate={setView} />;
       case 'tts':
         return null; // TTS is always mounted below, hidden when not active
       default:

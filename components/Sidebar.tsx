@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, Mic, Music, Users, MessageSquare, Menu, ChevronRight, ChevronDown, Plus, Edit2, Check, Sparkles, Home, Trash2, HelpCircle, Settings, CreditCard, LogOut } from 'lucide-react';
+import { LayoutGrid, Mic, Music, Users, MessageSquare, Menu, ChevronRight, ChevronDown, Plus, Edit2, Check, Sparkles, Home, Trash2, HelpCircle, Settings, CreditCard, LogOut, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { createClient } from '@/lib/supabase/client';
@@ -100,6 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isCol
   const menuItems = [
     { id: 'dashboard', icon: Home, label: 'Home' },
     { id: 'tts', icon: Mic, label: 'Text to Speech' },
+    { id: 'script-to-voice', icon: FileText, label: 'Script to Voice' },
     { id: 'library', icon: Users, label: 'Voices' },
     { id: 'create', icon: Plus, label: 'Create Voice' },
     { id: 'subscription', icon: CreditCard, label: 'Pricing' },
