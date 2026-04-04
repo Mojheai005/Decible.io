@@ -33,57 +33,55 @@ async function getUserProfile(userId: string): Promise<{ credits_remaining: numb
     return data as { credits_remaining: number; subscription_tier: string; credits_used_this_month: number };
 }
 
-// Deduct credits and log transaction
-async function useCredits(userId: string, amount: number, description: string, referenceId?: string) {
+// Pre-deduct credits atomically using stored procedure (row-level locking)
+async function preDeductCredits(userId: string, amount: number, description: string, referenceId: string) {
     const admin = getAdminClient();
 
-    // Get current balance and usage
-    const { data: profile, error: fetchError } = await admin
-        .from('user_profiles')
-        .select('credits_remaining, credits_used_this_month')
-        .eq('id', userId)
-        .single();
-
-    if (fetchError || !profile) {
-        console.error('Error fetching profile for credit deduction:', fetchError);
-        return { success: false, error: fetchError?.message || 'Profile not found' };
-    }
-
-    const newBalance = profile.credits_remaining - amount;
-    if (newBalance < 0) {
-        return { success: false, error: 'Insufficient credits', newBalance: profile.credits_remaining };
-    }
-
-    // Update credits_remaining and credits_used_this_month
-    const { error: updateError } = await admin
-        .from('user_profiles')
-        .update({
-            credits_remaining: newBalance,
-            credits_used_this_month: (profile.credits_used_this_month || 0) + amount,
-        })
-        .eq('id', userId);
-
-    if (updateError) {
-        console.error('Error updating credits:', updateError);
-        return { success: false, error: updateError.message };
-    }
-
-    // Log credit transaction
-    const { error: txError } = await admin.from('credit_transactions').insert({
-        user_id: userId,
-        amount: -amount,
-        balance_before: profile.credits_remaining,
-        balance_after: newBalance,
-        type: 'generation',
-        description,
-        reference_id: referenceId || null,
-        reference_type: 'generation',
+    const { data, error } = await admin.rpc('use_credits', {
+        p_user_id: userId,
+        p_amount: amount,
+        p_description: description,
+        p_reference_id: referenceId,
     });
-    if (txError) {
-        console.error('Error logging credit transaction:', txError.message);
+
+    if (error) {
+        console.error('Credit deduction RPC error:', error);
+        return { success: false, error: error.message, newBalance: 0 };
     }
 
-    return { success: true, newBalance };
+    // use_credits returns TABLE (success, new_balance, error_message)
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result?.success) {
+        return { success: false, error: result?.error_message || 'Credit deduction failed', newBalance: result?.new_balance ?? 0 };
+    }
+
+    return { success: true, newBalance: result.new_balance };
+}
+
+// Refund credits on generation failure using stored procedure
+async function refundCredits(userId: string, amount: number, referenceId: string, reason: string) {
+    const admin = getAdminClient();
+
+    try {
+        const { error } = await admin.rpc('add_credits', {
+            p_user_id: userId,
+            p_amount: amount,
+            p_type: 'refund',
+            p_description: `Refund: ${reason}`,
+            p_reference_id: referenceId,
+        });
+
+        if (error) {
+            console.error('CRITICAL: Credit refund failed', { userId, amount, referenceId, error });
+            return false;
+        }
+
+        console.log(`[Credits] Refunded ${amount} credits to ${userId} — ${reason}`);
+        return true;
+    } catch (err) {
+        console.error('CRITICAL: Credit refund exception', { userId, amount, referenceId, err });
+        return false;
+    }
 }
 
 // Store audio in Supabase Storage and return public URL
@@ -217,40 +215,14 @@ export async function POST(request: NextRequest) {
         }
 
         // 7. Get the voice name to send to Kie.ai API
-        // voice_id from our system maps to voice name for Kie.ai
         const voiceData = getVoiceById(voice_id);
         const voiceNameForApi = voiceData?.voiceName || voice_name || voice_id;
 
-        // 8. Generate TTS using Kie.ai (direct response, no polling!)
-        const audioBuffer = await generateTTS({
-            text,
-            voice: voiceNameForApi,
-            voice_settings: voice_settings ? {
-                stability: Math.round((voice_settings.stability ?? 0.5) * 100) / 100,
-                similarity_boost: Math.round((voice_settings.similarity_boost ?? 0.75) * 100) / 100,
-                speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
-                style: Math.round((voice_settings.style ?? 0) * 100) / 100,
-            } : undefined,
-        });
-
-        // 9. Generate a unique ID for this generation
+        // 8. Generate unique ID for this generation
         const generationId = `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-        // 10. Store audio in Supabase Storage
-        const storedAudioUrl = await storeAudioInBucket(userId, generationId, audioBuffer);
-
-        if (!storedAudioUrl) {
-            // If storage fails, create a blob URL as fallback (for immediate playback)
-            // Note: This won't persist, but at least the user gets their audio
-            console.error('Failed to store audio, returning error');
-            return NextResponse.json(
-                { error: 'Failed to store generated audio' },
-                { status: 500 }
-            );
-        }
-
-        // 11. Deduct credits
-        const creditResult = await useCredits(
+        // 9. PRE-DEDUCT credits atomically (row-locked, prevents race conditions)
+        const creditResult = await preDeductCredits(
             userId,
             creditsNeeded,
             `TTS Generation: ${charactersUsed} characters`,
@@ -258,10 +230,45 @@ export async function POST(request: NextRequest) {
         );
 
         if (!creditResult.success) {
-            console.error('Failed to deduct credits:', creditResult.error);
+            const status = creditResult.error?.includes('Insufficient') ? 402 : 500;
+            return NextResponse.json({
+                error: creditResult.error || 'Credit deduction failed',
+                creditsNeeded,
+                creditsRemaining: creditResult.newBalance,
+            }, { status });
         }
 
-        // 12. Save to history
+        // 10. Generate TTS using Kie.ai — if this fails, REFUND credits
+        let audioBuffer: ArrayBuffer;
+        try {
+            audioBuffer = await generateTTS({
+                text,
+                voice: voiceNameForApi,
+                voice_settings: voice_settings ? {
+                    stability: Math.round((voice_settings.stability ?? 0.5) * 100) / 100,
+                    similarity_boost: Math.round((voice_settings.similarity_boost ?? 0.75) * 100) / 100,
+                    speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
+                    style: Math.round((voice_settings.style ?? 0) * 100) / 100,
+                } : undefined,
+            });
+        } catch (genError) {
+            // Generation failed — refund credits
+            await refundCredits(userId, creditsNeeded, generationId, 'TTS generation failed');
+            throw genError; // Let outer catch handle the error response
+        }
+
+        // 11. Store audio in Supabase Storage — if this fails, REFUND credits
+        const storedAudioUrl = await storeAudioInBucket(userId, generationId, audioBuffer);
+
+        if (!storedAudioUrl) {
+            await refundCredits(userId, creditsNeeded, generationId, 'Audio storage failed');
+            return NextResponse.json(
+                { error: 'Failed to store generated audio' },
+                { status: 500 }
+            );
+        }
+
+        // 12. Save to history (non-critical — no refund if this fails)
         await saveToHistory(
             userId,
             text,
@@ -281,7 +288,7 @@ export async function POST(request: NextRequest) {
             usage: {
                 characters: charactersUsed,
                 creditsUsed: creditsNeeded,
-                creditsRemaining: creditResult.newBalance ?? (profile.credits_remaining - creditsNeeded),
+                creditsRemaining: creditResult.newBalance,
             }
         });
 

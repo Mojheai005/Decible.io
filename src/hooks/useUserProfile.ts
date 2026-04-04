@@ -135,22 +135,54 @@ export function updateCreditsOptimistic(newRemaining: number, creditsUsed?: numb
     subscribers.forEach(fn => fn(updated))
 }
 
-// --- Supabase Realtime for credit changes ---
-let realtimeSetUp = false
+// --- Supabase Realtime for credit changes (reference-counted) ---
+let realtimeSubscriberCount = 0
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let realtimeChannel: any = null
+let realtimeUserId: string | null = null
 
-function setupRealtime() {
-    if (realtimeSetUp) return
-    realtimeSetUp = true
+function handleRealtimePayload(payload: { new: Record<string, unknown> }) {
+    const row = payload.new
+    if (row && typeof row.credits_remaining === 'number') {
+        const cached = getCachedProfile()
+        if (cached) {
+            const updated: ProfileResponse = {
+                ...cached,
+                profile: {
+                    ...cached.profile,
+                    remainingCredits: row.credits_remaining as number,
+                    usedCredits: (row.credits_used_this_month as number) ?? cached.profile.usedCredits,
+                    plan: (row.subscription_tier as string) ?? cached.profile.plan,
+                },
+            }
+            setCachedProfile(updated)
+            subscribers.forEach(fn => fn(updated))
+        }
+    }
+}
+
+function acquireRealtimeChannel() {
+    realtimeSubscriberCount++
+    if (realtimeSubscriberCount > 1 && realtimeChannel) return // Already subscribed
 
     try {
         const supabase = createClient()
 
-        // Get current user and subscribe to their profile changes
         supabase.auth.getUser().then(({ data: { user } }: { data: { user: { id: string } | null } }) => {
-            if (!user) { realtimeSetUp = false; return }
+            if (!user) return
 
-            supabase
-                .channel('profile-credits')
+            // If channel already exists for same user, skip
+            if (realtimeChannel && realtimeUserId === user.id) return
+
+            // Clean up stale channel if user changed
+            if (realtimeChannel) {
+                try { createClient().removeChannel(realtimeChannel) } catch { /* ignore */ }
+                realtimeChannel = null
+            }
+
+            realtimeUserId = user.id
+            realtimeChannel = supabase
+                .channel(`profile-credits-${user.id}`)
                 .on(
                     'postgres_changes' as never,
                     {
@@ -159,32 +191,29 @@ function setupRealtime() {
                         table: 'user_profiles',
                         filter: `id=eq.${user.id}`,
                     } as never,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (payload: any) => {
-                        const row = payload.new as Record<string, unknown>
-                        if (row && typeof row.credits_remaining === 'number') {
-                            // Patch the cached profile with realtime data
-                            const cached = getCachedProfile()
-                            if (cached) {
-                                const updated: ProfileResponse = {
-                                    ...cached,
-                                    profile: {
-                                        ...cached.profile,
-                                        remainingCredits: row.credits_remaining as number,
-                                        usedCredits: (row.credits_used_this_month as number) ?? cached.profile.usedCredits,
-                                        plan: (row.subscription_tier as string) ?? cached.profile.plan,
-                                    },
-                                }
-                                setCachedProfile(updated)
-                                subscribers.forEach(fn => fn(updated))
-                            }
-                        }
-                    }
+                    handleRealtimePayload as never,
                 )
-                .subscribe()
+                .subscribe((status: string) => {
+                    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                        // Force re-subscribe on next mount
+                        releaseRealtimeChannel(true)
+                    }
+                })
         })
-    } catch {
-        realtimeSetUp = false
+    } catch { /* ignore */ }
+}
+
+function releaseRealtimeChannel(force = false) {
+    if (!force) realtimeSubscriberCount--
+    else realtimeSubscriberCount = 0
+
+    if (realtimeSubscriberCount <= 0) {
+        realtimeSubscriberCount = 0
+        if (realtimeChannel) {
+            try { createClient().removeChannel(realtimeChannel) } catch { /* ignore */ }
+            realtimeChannel = null
+            realtimeUserId = null
+        }
     }
 }
 
@@ -222,11 +251,27 @@ export function useUserProfile(enabled = true): UseUserProfileResult {
         const handler = (result: ProfileResponse) => { setData(result) }
         subscribers.push(handler)
 
-        // Start Supabase Realtime subscription (once globally)
-        setupRealtime()
+        // Acquire shared Realtime channel (reference-counted)
+        acquireRealtimeChannel()
 
-        return () => { subscribers = subscribers.filter(fn => fn !== handler) }
+        return () => {
+            subscribers = subscribers.filter(fn => fn !== handler)
+            releaseRealtimeChannel()
+        }
     }, [enabled])
+
+    // Refetch on tab visibility change (catches missed Realtime updates)
+    useEffect(() => {
+        if (!enabled) return
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                clearProfileCache()
+                fetchProfile(false)
+            }
+        }
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }, [enabled, fetchProfile])
 
     // Fetch when enabled changes to true
     useEffect(() => {
