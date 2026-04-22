@@ -9,7 +9,7 @@ import { Profile } from './components/views/Profile';
 import { Subscription } from './components/views/Subscription';
 import { HelpCenter } from './components/views/HelpCenter';
 import { ScriptToVoice } from './components/views/ScriptToVoice';
-import { Bell, Menu, FileAudio, Coins, HelpCircle } from 'lucide-react';
+import { Bell, Menu, FileAudio, Coins, HelpCircle, AlertTriangle, X } from 'lucide-react';
 import DecibleLogo from './components/DecibleLogo';
 import { useUserProfile, clearProfileCache, prefetchProfile } from './src/hooks/useUserProfile';
 import { AudioProvider } from './src/contexts/GlobalAudioContext';
@@ -270,6 +270,36 @@ const AppContent: React.FC = () => {
             )}
           </div>
         </header>
+
+        {/* Service Status Banner — set showBanner to false to hide */}
+        {(() => {
+          const showBanner = true; // Toggle this to show/hide the maintenance banner
+          const [bannerDismissed, setBannerDismissed] = React.useState(false);
+          if (!showBanner || bannerDismissed) return null;
+          return (
+            <div className={`bg-amber-50 border-b border-amber-200 shrink-0 ${isMobile ? 'px-4 py-3' : 'px-6 py-3'}`}>
+              <div className="flex items-start gap-3 max-w-5xl mx-auto">
+                <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-semibold text-amber-900 ${isMobile ? 'text-sm' : 'text-sm'}`}>
+                    We're experiencing temporary service disruptions
+                  </p>
+                  <p className={`text-amber-700 mt-0.5 ${isMobile ? 'text-xs' : 'text-xs'}`}>
+                    Some voice generations may take longer than usual or fail intermittently. Our team is actively working with our infrastructure provider to resolve this. Your credits are safe — any failed generation is automatically refunded.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setBannerDismissed(true)}
+                  className="p-1 text-amber-400 hover:text-amber-600 rounded transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Main content - add bottom padding on mobile for nav bar */}
         <main className={`flex-1 overflow-y-auto relative bg-white ${isMobile ? 'pb-20' : ''}`}>
