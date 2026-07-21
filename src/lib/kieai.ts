@@ -1,24 +1,37 @@
 // ===========================================
 // KIE.AI TTS API CLIENT
-// ElevenLabs TTS v2.5 via Kie.ai
+// Gemini 3.1 Flash TTS via Kie.ai
 // Uses async task creation + polling
+// Output format: WAV (audio/wav)
 // ===========================================
+
+import { VOICES_DATA } from './voices-data'
 
 export const KIEAI_BASE_URL = 'https://api.kie.ai/api/v1'
 
-// Voice settings interface matching ElevenLabs parameters
+export const KIEAI_TTS_MODEL = 'google/gemini-3-1-flash-tts'
+
+// Generated audio format for the current model
+export const TTS_OUTPUT_FORMAT = {
+    extension: 'wav',
+    mimeType: 'audio/wav',
+} as const
+
+// Voice settings interface — kept for backward compatibility with the
+// ElevenLabs-era API surface. Only `speed` has an effect on the Gemini
+// model (mapped to its `pace` control); the rest are accepted and ignored.
 export interface KieAIVoiceSettings {
-    stability?: number        // 0.0-1.0, default 0.5
-    similarity_boost?: number // 0.0-1.0, default 0.75
-    style?: number           // 0.0-1.0, default 0
-    speed?: number           // 0.7-1.2, default 1.0
+    stability?: number        // 0.0-1.0 (ignored by Gemini TTS)
+    similarity_boost?: number // 0.0-1.0 (ignored by Gemini TTS)
+    style?: number           // 0.0-1.0 (ignored by Gemini TTS)
+    speed?: number           // 0.7-1.2, default 1.0 → mapped to pace
 }
 
 export interface KieAITTSParams {
     text: string
-    voice: string  // Voice name like "Rachel", "Josh", etc.
+    voice: string  // Catalog voice name/ID (e.g. "Rachel") or a Gemini voice name (e.g. "Puck")
     voice_settings?: KieAIVoiceSettings
-    language_code?: string  // Optional language override
+    language_code?: string  // No-op: Gemini TTS auto-detects language
 }
 
 interface CreateTaskResponse {
@@ -50,6 +63,68 @@ interface ResultJson {
     resultUrls: string[]
 }
 
+// ===========================================
+// VOICE MAPPING — legacy ElevenLabs catalog → Gemini voices
+// The library UI still shows the original 85+ catalog voices; each one is
+// deterministically mapped to the closest-gender Gemini voice so existing
+// saved voices and history keep working.
+// ===========================================
+
+export const GEMINI_MALE_VOICES = [
+    'Puck', 'Charon', 'Fenrir', 'Orus', 'Enceladus',
+    'Iapetus', 'Umbriel', 'Algieba', 'Algenib', 'Rasalgethi',
+    'Alnilam', 'Schedar', 'Achird', 'Zubenelgenubi', 'Sadaltager',
+] as const
+
+export const GEMINI_FEMALE_VOICES = [
+    'Zephyr', 'Kore', 'Leda', 'Aoede', 'Callirrhoe',
+    'Autonoe', 'Despina', 'Erinome', 'Laomedeia', 'Achernar',
+    'Gacrux', 'Pulcherrima', 'Vindemiatrix', 'Sulafat', 'Sadachbia',
+] as const
+
+const ALL_GEMINI_VOICES = new Set<string>([...GEMINI_MALE_VOICES, ...GEMINI_FEMALE_VOICES])
+
+// Deterministic string hash so a given catalog voice always maps to the
+// same Gemini voice across requests and deploys
+function hashString(str: string): number {
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash * 31 + str.charCodeAt(i)) | 0
+    }
+    return Math.abs(hash)
+}
+
+/**
+ * Resolve any catalog voice identifier (voiceName, id, display name, or
+ * ElevenLabs ID) to a valid Gemini voice name. Gemini names pass through.
+ */
+export function mapToGeminiVoice(voice: string): string {
+    if (ALL_GEMINI_VOICES.has(voice)) {
+        return voice
+    }
+
+    const lower = voice.toLowerCase()
+    const catalogVoice = VOICES_DATA.find(v =>
+        v.voiceName === voice ||
+        v.id === lower ||
+        v.name.toLowerCase() === lower ||
+        v.elevenLabsId === voice
+    )
+
+    const pool: readonly string[] = catalogVoice?.gender === 'female'
+        ? GEMINI_FEMALE_VOICES
+        : GEMINI_MALE_VOICES // male + neutral + unknown default to the male pool
+
+    return pool[hashString(catalogVoice?.id || voice) % pool.length]
+}
+
+// Map the legacy speed slider (0.7-1.2) to Gemini's pace presets
+function speedToPace(speed: number): 'Natural' | 'Rapid Fire' | 'The Drift' {
+    if (speed >= 1.1) return 'Rapid Fire'
+    if (speed <= 0.85) return 'The Drift'
+    return 'Natural'
+}
+
 /**
  * Create a TTS task on Kie.ai
  */
@@ -60,24 +135,30 @@ async function createTask(params: KieAITTSParams): Promise<string> {
     }
 
     const settings = params.voice_settings || {}
-
-    // Clamp values to Kie.ai / ElevenLabs v2.5 valid ranges
     const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    const speed = clamp(settings.speed ?? 1.0, 0.7, 1.2)
+    const geminiVoice = mapToGeminiVoice(params.voice)
 
     const requestBody = {
-        model: 'elevenlabs/text-to-speech-turbo-2-5',
+        model: KIEAI_TTS_MODEL,
         input: {
-            text: params.text,
-            voice: params.voice,
-            stability: clamp(settings.stability ?? 0.5, 0, 1),
-            similarity_boost: clamp(settings.similarity_boost ?? 0.75, 0, 1),
-            style: clamp(settings.style ?? 0, 0, 1),
-            speed: clamp(settings.speed ?? 1.0, 0.7, 1.2),
-            ...(params.language_code && { language_code: params.language_code }),
+            speakers: [
+                {
+                    speaker_id: 'Speaker 1',
+                    voice_name: geminiVoice,
+                    pace: speedToPace(speed),
+                },
+            ],
+            dialogue_turns: [
+                {
+                    speaker_id: 'Speaker 1',
+                    text: params.text,
+                },
+            ],
         },
     }
 
-    console.log('[Kie.ai] Creating task — voice:', requestBody.input.voice, '| text length:', requestBody.input.text.length)
+    console.log('[Kie.ai] Creating task — voice:', params.voice, '→', geminiVoice, '| text length:', params.text.length)
 
     const response = await fetch(`${KIEAI_BASE_URL}/jobs/createTask`, {
         method: 'POST',
@@ -95,7 +176,6 @@ async function createTask(params: KieAITTSParams): Promise<string> {
     }
 
     const result: CreateTaskResponse = await response.json()
-    console.log('[Kie.ai] Create Task Response:', JSON.stringify(result))
 
     if (result.code !== 200 || !result.data?.taskId) {
         throw new Error(`Kie.ai task creation failed: ${result.msg || JSON.stringify(result)}`)
@@ -139,13 +219,11 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         }
 
         const { state, resultJson, failMsg, failCode } = result.data
-        console.log(`[Kie.ai] Poll attempt ${attempt + 1} — state: ${state}`)
 
         if (state === 'success' && resultJson) {
             // Parse the result to get audio URL
             const parsed: ResultJson = JSON.parse(resultJson)
             if (parsed.resultUrls && parsed.resultUrls.length > 0) {
-                console.log('[Kie.ai] Success! Audio URL received')
                 return parsed.resultUrls[0]
             }
             throw new Error('No audio URL in result')
@@ -164,8 +242,8 @@ async function pollTaskStatus(taskId: string): Promise<string> {
 }
 
 /**
- * Generate TTS audio using Kie.ai ElevenLabs API
- * Creates task, polls for completion, returns audio buffer
+ * Generate TTS audio using Kie.ai Gemini 3.1 Flash TTS
+ * Creates task, polls for completion, returns audio buffer (WAV)
  */
 export async function generateTTS(params: KieAITTSParams): Promise<ArrayBuffer> {
     // 1. Create the task

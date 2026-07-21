@@ -59,7 +59,7 @@ export async function GET(request: Request) {
 
         // Convert ArrayBuffer to base64 data URL for immediate playback
         const base64 = Buffer.from(audioBuffer).toString('base64');
-        const dataUrl = `data:audio/mpeg;base64,${base64}`;
+        const dataUrl = `data:audio/wav;base64,${base64}`;
 
         // Cache the preview
         previewCache.set(voiceId, dataUrl);
