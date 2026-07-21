@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTTS } from '@/lib/kieai';
+import { generateTTS, TTS_OUTPUT_FORMAT } from '@/lib/kieai';
 import { getVoiceById } from '@/lib/voices-data';
 import { CREDITS_CONFIG } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
@@ -88,13 +88,13 @@ async function refundCredits(userId: string, amount: number, referenceId: string
 async function storeAudioInBucket(userId: string, generationId: string, audioBuffer: ArrayBuffer): Promise<string | null> {
     try {
         const admin = getAdminClient();
-        const filePath = `${userId}/${generationId}.mp3`;
+        const filePath = `${userId}/${generationId}.${TTS_OUTPUT_FORMAT.extension}`;
 
         // Upload to Supabase Storage bucket "audio-generations"
         const { error: uploadError } = await admin.storage
             .from('audio-generations')
             .upload(filePath, audioBuffer, {
-                contentType: 'audio/mpeg',
+                contentType: TTS_OUTPUT_FORMAT.mimeType,
                 upsert: true,
             });
 

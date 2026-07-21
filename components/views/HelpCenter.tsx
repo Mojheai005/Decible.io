@@ -56,7 +56,7 @@ const faqSections: FAQSection[] = [
     items: [
       {
         question: 'What audio formats are supported?',
-        answer: 'Generated audio is available in MP3 format. For voice cloning uploads, we accept MP3, WAV, and M4A files.'
+        answer: 'Generated audio is available in WAV format. For voice cloning uploads, we accept MP3, WAV, and M4A files.'
       },
       {
         question: 'Is there an API available?',

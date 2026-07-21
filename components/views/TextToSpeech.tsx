@@ -335,7 +335,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${item.voiceName.replace(/\s+/g, '-').toLowerCase()}-audio.mp3`;
+            a.download = `${item.voiceName.replace(/\s+/g, '-').toLowerCase()}-audio.${item.audioUrl.split('.').pop()?.split('?')[0] || 'wav'}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -388,7 +388,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${currentTrack.voiceName.replace(/\s+/g, '-').toLowerCase()}-audio.mp3`;
+            a.download = `${currentTrack.voiceName.replace(/\s+/g, '-').toLowerCase()}-audio.${currentTrack.audioUrl.split('.').pop()?.split('?')[0] || 'wav'}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

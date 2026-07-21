@@ -207,7 +207,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${currentVoice?.name || 'script'}-voiceover.mp3`;
+            a.download = `${currentVoice?.name || 'script'}-voiceover.${progress.finalAudioUrl.split('.').pop()?.split('?')[0] || 'wav'}`;
             a.click();
             URL.revokeObjectURL(url);
         } catch {
@@ -569,7 +569,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                     className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl font-semibold text-sm hover:bg-gray-800 transition-colors"
                                 >
                                     <Download className="w-4 h-4" />
-                                    Download MP3
+                                    Download Audio
                                 </button>
                                 <button
                                     onClick={() => {

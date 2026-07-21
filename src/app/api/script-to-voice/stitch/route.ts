@@ -1,18 +1,112 @@
 // ===========================================
-// AUDIO STITCHER — Concatenate MP3 chunks into one file
-// MP3 frames are self-contained: same-bitrate files can
-// be concatenated by byte appending.
+// AUDIO STITCHER — Concatenate audio chunks into one file
+// WAV (Gemini TTS output): parse RIFF chunks, concatenate the
+//   PCM data sections, and write a single new header.
+// MP3 (legacy fallback): frames are self-contained, so same-bitrate
+//   files can be concatenated by byte appending (ID3 tags stripped).
 // ===========================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
+import { TTS_OUTPUT_FORMAT } from '@/lib/kieai';
 
 export const maxDuration = 120;
 
 interface StitchRequest {
     audioUrls: string[];
     voiceName: string;
+}
+
+interface WavInfo {
+    audioFormat: number;
+    numChannels: number;
+    sampleRate: number;
+    bitsPerSample: number;
+    data: Buffer;
+}
+
+function isWav(buffer: Buffer): boolean {
+    return buffer.length >= 12 &&
+        buffer.toString('ascii', 0, 4) === 'RIFF' &&
+        buffer.toString('ascii', 8, 12) === 'WAVE';
+}
+
+/**
+ * Parse a WAV file: read the fmt chunk and extract the raw audio data chunk.
+ */
+function parseWav(buffer: Buffer, index: number): WavInfo {
+    if (!isWav(buffer)) {
+        throw new Error(`Chunk ${index + 1} is not a valid WAV file`);
+    }
+
+    let fmt: Omit<WavInfo, 'data'> | null = null;
+    let data: Buffer | null = null;
+    let offset = 12;
+
+    while (offset + 8 <= buffer.length) {
+        const chunkId = buffer.toString('ascii', offset, offset + 4);
+        const chunkSize = buffer.readUInt32LE(offset + 4);
+        const chunkStart = offset + 8;
+
+        if (chunkId === 'fmt ') {
+            fmt = {
+                audioFormat: buffer.readUInt16LE(chunkStart),
+                numChannels: buffer.readUInt16LE(chunkStart + 2),
+                sampleRate: buffer.readUInt32LE(chunkStart + 4),
+                bitsPerSample: buffer.readUInt16LE(chunkStart + 14),
+            };
+        } else if (chunkId === 'data') {
+            data = buffer.subarray(chunkStart, Math.min(chunkStart + chunkSize, buffer.length));
+        }
+
+        // Chunks are word-aligned: odd sizes are padded with one byte
+        offset = chunkStart + chunkSize + (chunkSize % 2);
+    }
+
+    if (!fmt || !data) {
+        throw new Error(`Chunk ${index + 1}: missing fmt or data section in WAV file`);
+    }
+
+    return { ...fmt, data };
+}
+
+/**
+ * Concatenate parsed WAV chunks into a single PCM WAV file.
+ * All chunks must share the same format/sample rate/channels.
+ */
+function concatenateWavs(wavs: WavInfo[]): Buffer {
+    const first = wavs[0];
+    for (let i = 1; i < wavs.length; i++) {
+        const w = wavs[i];
+        if (w.audioFormat !== first.audioFormat ||
+            w.numChannels !== first.numChannels ||
+            w.sampleRate !== first.sampleRate ||
+            w.bitsPerSample !== first.bitsPerSample) {
+            throw new Error(`Chunk ${i + 1} has a different audio format and cannot be stitched`);
+        }
+    }
+
+    const totalDataSize = wavs.reduce((sum, w) => sum + w.data.length, 0);
+    const byteRate = first.sampleRate * first.numChannels * (first.bitsPerSample / 8);
+    const blockAlign = first.numChannels * (first.bitsPerSample / 8);
+
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0, 'ascii');
+    header.writeUInt32LE(36 + totalDataSize, 4);
+    header.write('WAVE', 8, 'ascii');
+    header.write('fmt ', 12, 'ascii');
+    header.writeUInt32LE(16, 16);                       // fmt chunk size (PCM)
+    header.writeUInt16LE(first.audioFormat, 20);
+    header.writeUInt16LE(first.numChannels, 22);
+    header.writeUInt32LE(first.sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(first.bitsPerSample, 34);
+    header.write('data', 36, 'ascii');
+    header.writeUInt32LE(totalDataSize, 40);
+
+    return Buffer.concat([header, ...wavs.map(w => w.data)]);
 }
 
 /**
@@ -70,21 +164,34 @@ export async function POST(request: NextRequest) {
 
         const buffers = await Promise.all(bufferPromises);
 
-        // 4. Concatenate MP3 buffers — strip ID3 headers from chunks after the first
-        const parts: Buffer[] = buffers.map((buf, i) =>
-            i === 0 ? buf : stripID3v2Header(buf)
-        );
-        const concatenated = Buffer.concat(parts);
+        // 4. Concatenate — WAV (current Gemini TTS output) or legacy MP3
+        let concatenated: Buffer;
+        let extension: string;
+        let contentType: string;
+
+        if (isWav(buffers[0])) {
+            const wavs = buffers.map((buf, i) => parseWav(buf, i));
+            concatenated = concatenateWavs(wavs);
+            extension = TTS_OUTPUT_FORMAT.extension;
+            contentType = TTS_OUTPUT_FORMAT.mimeType;
+        } else {
+            const parts: Buffer[] = buffers.map((buf, i) =>
+                i === 0 ? buf : stripID3v2Header(buf)
+            );
+            concatenated = Buffer.concat(parts);
+            extension = 'mp3';
+            contentType = 'audio/mpeg';
+        }
 
         // 5. Upload stitched audio to Supabase Storage
         const admin = getAdminClient();
         const stitchId = `stitch_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        const filePath = `${user.id}/${stitchId}.mp3`;
+        const filePath = `${user.id}/${stitchId}.${extension}`;
 
         const { error: uploadError } = await admin.storage
             .from('audio-generations')
             .upload(filePath, concatenated, {
-                contentType: 'audio/mpeg',
+                contentType,
                 upsert: true,
             });
 
