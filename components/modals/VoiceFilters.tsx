@@ -8,8 +8,9 @@ interface VoiceFiltersProps {
   initialFilters?: { language?: string; accent?: string; gender?: string };
 }
 
-const LANGUAGES = ['English', 'Hindi', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Japanese', 'Korean', 'Chinese'];
-const ACCENTS = ['American', 'British', 'Australian', 'Indian', 'Irish', 'Scottish', 'Canadian', 'South African'];
+// Options reflect the current Gemini voice catalog (English, accent-neutral voices)
+const LANGUAGES = ['English'];
+const ACCENTS = ['Neutral'];
 const CATEGORIES = [
   "Narrative & Story", "Conversational", "Characters & Animation", "Social Media",
   "Entertainment & TV", "Advertisement", "Informative & Educational"

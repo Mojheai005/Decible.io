@@ -5,7 +5,7 @@
 // Output format: WAV (audio/wav)
 // ===========================================
 
-import { VOICES_DATA } from './voices-data'
+import { VOICES_DATA, GEMINI_VOICES } from './voices-data'
 
 export const KIEAI_BASE_URL = 'https://api.kie.ai/api/v1'
 
@@ -70,19 +70,11 @@ interface ResultJson {
 // saved voices and history keep working.
 // ===========================================
 
-export const GEMINI_MALE_VOICES = [
-    'Puck', 'Charon', 'Fenrir', 'Orus', 'Enceladus',
-    'Iapetus', 'Umbriel', 'Algieba', 'Algenib', 'Rasalgethi',
-    'Alnilam', 'Schedar', 'Achird', 'Zubenelgenubi', 'Sadaltager',
-] as const
+// Pools are derived from the catalog so genders always match GEMINI_VOICES
+export const GEMINI_MALE_VOICES: string[] = GEMINI_VOICES.filter(v => v.gender === 'male').map(v => v.voiceName)
+export const GEMINI_FEMALE_VOICES: string[] = GEMINI_VOICES.filter(v => v.gender === 'female').map(v => v.voiceName)
 
-export const GEMINI_FEMALE_VOICES = [
-    'Zephyr', 'Kore', 'Leda', 'Aoede', 'Callirrhoe',
-    'Autonoe', 'Despina', 'Erinome', 'Laomedeia', 'Achernar',
-    'Gacrux', 'Pulcherrima', 'Vindemiatrix', 'Sulafat', 'Sadachbia',
-] as const
-
-const ALL_GEMINI_VOICES = new Set<string>([...GEMINI_MALE_VOICES, ...GEMINI_FEMALE_VOICES])
+const ALL_GEMINI_VOICES = new Set<string>(GEMINI_VOICES.map(v => v.voiceName))
 
 // Deterministic string hash so a given catalog voice always maps to the
 // same Gemini voice across requests and deploys
@@ -110,6 +102,11 @@ export function mapToGeminiVoice(voice: string): string {
         v.name.toLowerCase() === lower ||
         v.elevenLabsId === voice
     )
+
+    // Catalog entry already targets a Gemini voice (e.g. looked up by id 'puck') — use it directly
+    if (catalogVoice && ALL_GEMINI_VOICES.has(catalogVoice.voiceName)) {
+        return catalogVoice.voiceName
+    }
 
     const pool: readonly string[] = catalogVoice?.gender === 'female'
         ? GEMINI_FEMALE_VOICES

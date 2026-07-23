@@ -7,7 +7,7 @@
 export interface VoiceData {
     id: string           // Unique identifier (voice name lowercase, no spaces)
     name: string         // Display name shown to user
-    voiceName: string    // Value sent to Kie.ai API (preset name OR ElevenLabs voice ID)
+    voiceName: string    // Value sent to Kie.ai API (Gemini voice name, preset name, or ElevenLabs voice ID)
     elevenLabsId?: string // ElevenLabs voice ID for preview URLs and extended voices
     category: string     // Our custom category
     gender: 'male' | 'female' | 'neutral'
@@ -18,6 +18,8 @@ export interface VoiceData {
     useCases: string[]
     previewText?: string
     tags: string[]
+    previewUrl?: string  // Explicit preview URL (used for Gemini voices; served from /public)
+    hidden?: boolean     // Hidden from the library UI but still resolvable by id/name (history, saved voices)
 }
 
 // Our 9 categories
@@ -46,11 +48,11 @@ export const SUPPORTED_PRESET_NAMES = [
     'Eric', 'Chris', 'Brian', 'Daniel', 'Lily', 'Bill',
 ] as const
 
-// Complete voice library — 130+ voices
+// Legacy ElevenLabs-era voice library — kept for history/saved-voice resolution
+// but HIDDEN from the library UI since the switch to Gemini 3.1 Flash TTS.
 // - Preset voices: voiceName = human-readable name (e.g. "Rachel")
 // - Extended voices: voiceName = ElevenLabs voice ID (e.g. "BIvP0GN1cAtSRTxNHnWS")
-// Both are accepted by Kie.ai API input.voice field
-export const VOICES_DATA: VoiceData[] = [
+const ELEVENLABS_VOICES: VoiceData[] = [
     {
     id: 'brian',
     name: 'Brian',
@@ -1229,7 +1231,66 @@ export const VOICES_DATA: VoiceData[] = [
     },
 ]
 
+// ===========================================
+// GEMINI 3.1 FLASH TTS VOICES — the active library
+// All 30 prebuilt voices offered by google/gemini-3-1-flash-tts on Kie.ai.
+// voiceName is the exact name the API expects. Previews are pre-generated
+// with this same model and served from /public/previews.
+// ===========================================
+export const GEMINI_VOICES: VoiceData[] = [
+    // --- Commentary ---
+    { id: 'charon', name: 'Charon', voiceName: 'Charon', category: 'Commentary', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Deep, informative male voice — ideal for YouTube explainers and analysis', useCases: ['youtube', 'studio'], tags: ['youtube', 'informative', 'deep', 'explainer', 'male'], previewUrl: '/previews/charon.wav' },
+    { id: 'iapetus', name: 'Iapetus', voiceName: 'Iapetus', category: 'Commentary', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Clear, precise male voice that keeps long commentary easy to follow', useCases: ['youtube', 'studio'], tags: ['youtube', 'clear', 'precise', 'commentary', 'male'], previewUrl: '/previews/iapetus.wav' },
+    { id: 'erinome', name: 'Erinome', voiceName: 'Erinome', category: 'Commentary', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Clear, professional female voice for polished video essays', useCases: ['youtube', 'studio'], tags: ['youtube', 'clear', 'professional', 'female'], previewUrl: '/previews/erinome.wav' },
+    { id: 'sadaltager', name: 'Sadaltager', voiceName: 'Sadaltager', category: 'Commentary', gender: 'male', accent: 'Neutral', language: 'English', age: 'Middle Aged', description: 'Knowledgeable, expert male tone — perfect for tech and educational breakdowns', useCases: ['youtube', 'documentary'], tags: ['youtube', 'knowledgeable', 'expert', 'educational', 'male'], previewUrl: '/previews/sadaltager.wav' },
+    // --- Documentary ---
+    { id: 'rasalgethi', name: 'Rasalgethi', voiceName: 'Rasalgethi', category: 'Documentary', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Informative narrator with a classic documentary gravitas', useCases: ['documentary', 'youtube'], tags: ['youtube', 'informative', 'narrator', 'documentary', 'male'], previewUrl: '/previews/rasalgethi.wav' },
+    { id: 'alnilam', name: 'Alnilam', voiceName: 'Alnilam', category: 'Documentary', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Firm, grounded male voice that carries weight in serious narration', useCases: ['documentary', 'youtube'], tags: ['youtube', 'firm', 'grounded', 'serious', 'male'], previewUrl: '/previews/alnilam.wav' },
+    { id: 'schedar', name: 'Schedar', voiceName: 'Schedar', category: 'Documentary', gender: 'male', accent: 'Neutral', language: 'English', age: 'Middle Aged', description: 'Even, measured delivery — steady pacing for long-form documentaries', useCases: ['documentary', 'studio'], tags: ['even', 'measured', 'steady', 'male'], previewUrl: '/previews/schedar.wav' },
+    { id: 'gacrux', name: 'Gacrux', voiceName: 'Gacrux', category: 'Documentary', gender: 'female', accent: 'Neutral', language: 'English', age: 'Middle Aged', description: 'Mature, seasoned female voice with natural authority', useCases: ['documentary', 'studio'], tags: ['mature', 'authoritative', 'female'], previewUrl: '/previews/gacrux.wav' },
+    // --- Storytelling ---
+    { id: 'sulafat', name: 'Sulafat', voiceName: 'Sulafat', category: 'Storytelling', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Warm, engaging female voice that pulls listeners into any story', useCases: ['youtube', 'studio', 'sleep'], tags: ['youtube', 'warm', 'engaging', 'storytelling', 'female'], previewUrl: '/previews/sulafat.wav' },
+    { id: 'algieba', name: 'Algieba', voiceName: 'Algieba', category: 'Storytelling', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Smooth male narrator with a warm, cinematic feel', useCases: ['youtube', 'studio', 'sleep'], tags: ['youtube', 'smooth', 'warm', 'narrator', 'male'], previewUrl: '/previews/algieba.wav' },
+    { id: 'aoede', name: 'Aoede', voiceName: 'Aoede', category: 'Storytelling', gender: 'female', accent: 'Neutral', language: 'English', age: 'Young Adult', description: 'Breezy, light female voice for feel-good stories and lifestyle content', useCases: ['youtube', 'shorts'], tags: ['youtube', 'breezy', 'light', 'female'], previewUrl: '/previews/aoede.wav' },
+    { id: 'vindemiatrix', name: 'Vindemiatrix', voiceName: 'Vindemiatrix', category: 'Storytelling', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Gentle, warm female voice — bedtime stories and heartfelt narration', useCases: ['sleep', 'studio', 'youtube'], tags: ['youtube', 'gentle', 'warm', 'soothing', 'female'], previewUrl: '/previews/vindemiatrix.wav' },
+    // --- Short Videos ---
+    { id: 'zephyr', name: 'Zephyr', voiceName: 'Zephyr', category: 'Short Videos', gender: 'female', accent: 'Neutral', language: 'English', age: 'Young Adult', description: 'Bright, energetic female voice that pops in Shorts and Reels', useCases: ['shorts', 'youtube'], tags: ['youtube', 'bright', 'energetic', 'shorts', 'female'], previewUrl: '/previews/zephyr.wav' },
+    { id: 'puck', name: 'Puck', voiceName: 'Puck', category: 'Short Videos', gender: 'male', accent: 'Neutral', language: 'English', age: 'Young Adult', description: 'Upbeat, playful male voice — instant energy for fast-paced content', useCases: ['shorts', 'youtube'], tags: ['youtube', 'upbeat', 'playful', 'energetic', 'male'], previewUrl: '/previews/puck.wav' },
+    { id: 'fenrir', name: 'Fenrir', voiceName: 'Fenrir', category: 'Short Videos', gender: 'male', accent: 'Neutral', language: 'English', age: 'Young Adult', description: 'Excitable, high-energy male voice built for hype and hooks', useCases: ['shorts', 'youtube'], tags: ['youtube', 'excitable', 'hype', 'energetic', 'male'], previewUrl: '/previews/fenrir.wav' },
+    { id: 'laomedeia', name: 'Laomedeia', voiceName: 'Laomedeia', category: 'Short Videos', gender: 'female', accent: 'Neutral', language: 'English', age: 'Young Adult', description: 'Upbeat female voice with vlog-style energy and charm', useCases: ['shorts', 'youtube'], tags: ['youtube', 'upbeat', 'vlog', 'energetic', 'female'], previewUrl: '/previews/laomedeia.wav' },
+    // --- Crime & Suspense ---
+    { id: 'algenib', name: 'Algenib', voiceName: 'Algenib', category: 'Crime & Suspense', gender: 'male', accent: 'Neutral', language: 'English', age: 'Middle Aged', description: 'Gravelly, gritty male voice — true crime and dark mysteries', useCases: ['youtube', 'documentary'], tags: ['youtube', 'gravelly', 'gritty', 'true crime', 'male'], previewUrl: '/previews/algenib.wav' },
+    { id: 'kore', name: 'Kore', voiceName: 'Kore', category: 'Crime & Suspense', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Firm, compelling female voice that builds tension line by line', useCases: ['youtube', 'documentary'], tags: ['youtube', 'firm', 'tense', 'suspense', 'female'], previewUrl: '/previews/kore.wav' },
+    // --- Character ---
+    { id: 'leda', name: 'Leda', voiceName: 'Leda', category: 'Character', gender: 'female', accent: 'Neutral', language: 'English', age: 'Young Adult', description: 'Youthful, fresh female voice for animated and character-driven content', useCases: ['character', 'shorts'], tags: ['youthful', 'fresh', 'character', 'female'], previewUrl: '/previews/leda.wav' },
+    { id: 'sadachbia', name: 'Sadachbia', voiceName: 'Sadachbia', category: 'Character', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Lively, expressive male voice with real personality range', useCases: ['character', 'shorts', 'youtube'], tags: ['youtube', 'lively', 'expressive', 'character', 'male'], previewUrl: '/previews/sadachbia.wav' },
+    // --- Meditation & ASMR ---
+    { id: 'enceladus', name: 'Enceladus', voiceName: 'Enceladus', category: 'Meditation & ASMR', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Breathy, calm male voice — meditation, ASMR and wind-down content', useCases: ['asmr', 'sleep'], tags: ['breathy', 'calm', 'asmr', 'male'], previewUrl: '/previews/enceladus.wav' },
+    { id: 'despina', name: 'Despina', voiceName: 'Despina', category: 'Meditation & ASMR', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Smooth, soothing female voice that melts stress away', useCases: ['asmr', 'sleep'], tags: ['smooth', 'soothing', 'relaxing', 'female'], previewUrl: '/previews/despina.wav' },
+    { id: 'achernar', name: 'Achernar', voiceName: 'Achernar', category: 'Meditation & ASMR', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Soft, gentle female voice for sleep stories and guided relaxation', useCases: ['asmr', 'sleep'], tags: ['soft', 'gentle', 'sleep', 'female'], previewUrl: '/previews/achernar.wav' },
+    // --- Announcer & Radio ---
+    { id: 'orus', name: 'Orus', voiceName: 'Orus', category: 'Announcer & Radio', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Firm, authoritative male announcer — intros, promos and trailers', useCases: ['studio', 'youtube'], tags: ['youtube', 'authoritative', 'announcer', 'promo', 'male'], previewUrl: '/previews/orus.wav' },
+    { id: 'autonoe', name: 'Autonoe', voiceName: 'Autonoe', category: 'Announcer & Radio', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Bright, polished female voice with broadcast-ready energy', useCases: ['studio', 'youtube'], tags: ['youtube', 'bright', 'polished', 'broadcast', 'female'], previewUrl: '/previews/autonoe.wav' },
+    { id: 'pulcherrima', name: 'Pulcherrima', voiceName: 'Pulcherrima', category: 'Announcer & Radio', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Forward, confident female voice that commands attention', useCases: ['studio', 'youtube'], tags: ['youtube', 'confident', 'forward', 'announcer', 'female'], previewUrl: '/previews/pulcherrima.wav' },
+    // --- Conversational ---
+    { id: 'achird', name: 'Achird', voiceName: 'Achird', category: 'Conversational', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Friendly, warm male voice — like a good friend explaining things', useCases: ['youtube', 'studio'], tags: ['youtube', 'friendly', 'warm', 'conversational', 'male'], previewUrl: '/previews/achird.wav' },
+    { id: 'callirrhoe', name: 'Callirrhoe', voiceName: 'Callirrhoe', category: 'Conversational', gender: 'female', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Easy-going female voice with a relaxed, natural flow', useCases: ['youtube', 'studio'], tags: ['youtube', 'easy-going', 'relaxed', 'natural', 'female'], previewUrl: '/previews/callirrhoe.wav' },
+    { id: 'umbriel', name: 'Umbriel', voiceName: 'Umbriel', category: 'Conversational', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Laid-back, easy-going male voice for casual podcast-style content', useCases: ['youtube', 'studio'], tags: ['youtube', 'laid-back', 'casual', 'podcast', 'male'], previewUrl: '/previews/umbriel.wav' },
+    { id: 'zubenelgenubi', name: 'Zubenelgenubi', voiceName: 'Zubenelgenubi', category: 'Conversational', gender: 'male', accent: 'Neutral', language: 'English', age: 'Adult', description: 'Casual, natural male voice that sounds completely unscripted', useCases: ['youtube', 'shorts'], tags: ['youtube', 'casual', 'natural', 'conversational', 'male'], previewUrl: '/previews/zubenelgenubi.wav' },
+]
+
+// The full catalog: Gemini voices are live; legacy ElevenLabs voices are kept
+// but hidden from the library UI (history and saved voices still resolve).
+export const VOICES_DATA: VoiceData[] = [
+    ...GEMINI_VOICES,
+    ...ELEVENLABS_VOICES.map(v => ({ ...v, hidden: true })),
+]
+
+// Voices shown in the library UI
+export const VISIBLE_VOICES: VoiceData[] = VOICES_DATA.filter(v => !v.hidden)
+
 // Helper functions
+// Lookups search the FULL catalog (incl. hidden) so history and saved voices keep working
 export function getVoiceById(id: string): VoiceData | undefined {
     return VOICES_DATA.find(v => v.id === id)
 }
@@ -1238,21 +1299,22 @@ export function getVoiceByName(name: string): VoiceData | undefined {
     return VOICES_DATA.find(v => v.voiceName.toLowerCase() === name.toLowerCase())
 }
 
+// Listing/search helpers only surface visible (non-hidden) voices
 export function getVoicesByCategory(category: VoiceCategory): VoiceData[] {
-    return VOICES_DATA.filter(v => v.category === category)
+    return VISIBLE_VOICES.filter(v => v.category === category)
 }
 
 export function getVoicesByLanguage(language: string): VoiceData[] {
-    return VOICES_DATA.filter(v => v.language.toLowerCase() === language.toLowerCase())
+    return VISIBLE_VOICES.filter(v => v.language.toLowerCase() === language.toLowerCase())
 }
 
 export function getVoicesByUseCase(useCase: string): VoiceData[] {
-    return VOICES_DATA.filter(v => v.useCases.includes(useCase))
+    return VISIBLE_VOICES.filter(v => v.useCases.includes(useCase))
 }
 
 export function searchVoices(query: string): VoiceData[] {
     const q = query.toLowerCase()
-    return VOICES_DATA.filter(v =>
+    return VISIBLE_VOICES.filter(v =>
         v.name.toLowerCase().includes(q) ||
         v.category.toLowerCase().includes(q) ||
         v.accent.toLowerCase().includes(q) ||
@@ -1288,8 +1350,12 @@ const ELEVENLABS_PREVIEW_URLS: Record<string, string> = {
 }
 
 // Get the preview URL for a voice
-// Priority: 1) Verified ElevenLabs CDN  2) Kie.ai static CDN fallback
+// Priority: 1) Explicit previewUrl (Gemini voices, served from /public)
+//           2) Verified ElevenLabs CDN  3) Kie.ai static CDN fallback
 export function getVoicePreviewUrl(voice: VoiceData): string | null {
+    if (voice.previewUrl) {
+        return voice.previewUrl
+    }
     if (voice.elevenLabsId) {
         // Use verified ElevenLabs URL if available (always works)
         if (ELEVENLABS_PREVIEW_URLS[voice.elevenLabsId]) {
@@ -1301,18 +1367,18 @@ export function getVoicePreviewUrl(voice: VoiceData): string | null {
     return null
 }
 
-// Get all unique values for filters
+// Get all unique values for filters (visible voices only)
 export function getAllLanguages(): string[] {
-    return [...new Set(VOICES_DATA.map(v => v.language))].sort()
+    return [...new Set(VISIBLE_VOICES.map(v => v.language))].sort()
 }
 
 export function getAllAccents(): string[] {
-    return [...new Set(VOICES_DATA.map(v => v.accent))].sort()
+    return [...new Set(VISIBLE_VOICES.map(v => v.accent))].sort()
 }
 
 export function getAllUseCases(): string[] {
     const useCases = new Set<string>()
-    VOICES_DATA.forEach(v => v.useCases.forEach(uc => useCases.add(uc)))
+    VISIBLE_VOICES.forEach(v => v.useCases.forEach(uc => useCases.add(uc)))
     return [...useCases].sort()
 }
 

@@ -5,8 +5,8 @@
 
 import { Voice } from '@/hooks/useVoices'
 
-const CACHE_KEY = 'nmm_voices_v3'
-const CACHE_VERSION = '3.0'
+const CACHE_KEY = 'nmm_voices_v4'
+const CACHE_VERSION = '4.0' // bumped for the Gemini voice catalog — invalidates cached ElevenLabs lists
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 // Minimal voice data for cache (reduces size by ~70%)
@@ -80,6 +80,7 @@ function clearOldCache(): void {
     try {
         localStorage.removeItem('decible_voices_cache')
         localStorage.removeItem('decible_voices_cache_v2')
+        sessionStorage.removeItem('nmm_voices_v3')
     } catch {
         // Ignore
     }

@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
 import {
-    VOICES_DATA,
+    VISIBLE_VOICES,
     VOICE_CATEGORIES,
     getAllLanguages,
     getAllAccents,
     getAllUseCases,
     generateUsageCount,
     getVoicePreviewUrl,
+    type VoiceData,
 } from '@/lib/voices-data';
 
 // Transform voice data to match the existing frontend interface
-function transformVoice(v: typeof VOICES_DATA[0]) {
+function transformVoice(v: VoiceData) {
     return {
         id: v.id,
         name: v.name,
@@ -38,8 +39,8 @@ export async function GET(request: Request) {
         const useCase = searchParams.get('useCase');
         const search = searchParams.get('search');
 
-        // Start with all voices
-        let filteredVoices = [...VOICES_DATA];
+        // Start with all visible voices (hidden legacy voices are excluded)
+        let filteredVoices = [...VISIBLE_VOICES];
 
         // Filter by category
         if (category && category !== 'all') {
@@ -83,7 +84,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
             voices,
             total: voices.length,
-            totalAll: VOICES_DATA.length,
+            totalAll: VISIBLE_VOICES.length,
             categories: [...VOICE_CATEGORIES],
             languages,
             accents,
