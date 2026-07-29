@@ -130,6 +130,38 @@ curl -X DELETE https://www.decible.io/api/admin/course-buyers \
 
 ---
 
+## 3b. Adding buyers manually with SQL (no curl needed)
+
+If you prefer working directly in the **Supabase Dashboard → SQL Editor**,
+paste your buyer list like this:
+
+```sql
+INSERT INTO course_entitlements (email)
+VALUES
+  (lower('buyer1@gmail.com')),
+  (lower('buyer2@yahoo.com')),
+  (lower('buyer3@outlook.com'))
+ON CONFLICT (email) DO NOTHING;
+```
+
+- `lower(...)` keeps matching reliable (claims are matched in lowercase).
+- `ON CONFLICT ... DO NOTHING` makes re-pasting the same list completely safe —
+  existing entries (claimed or not) are never modified, so nobody can ever be
+  double-gifted.
+
+Check status any time:
+
+```sql
+SELECT email, credits, granted, granted_at
+FROM course_entitlements ORDER BY created_at DESC;
+```
+
+Remove a mistaken entry:
+
+```sql
+DELETE FROM course_entitlements WHERE email = lower('wrong@example.com');
+```
+
 ## 4. Automating it (recommended)
 
 Instead of running curl after every sale, point the course platform's
