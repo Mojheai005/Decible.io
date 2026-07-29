@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { SUBSCRIPTION_PLANS } from '@/lib/pricing';
+import { grantCourseBonusIfEligible } from '@/lib/course-bonus';
 
 export async function GET() {
     try {
@@ -62,6 +63,18 @@ export async function GET() {
             userProfile = newProfile;
         }
 
+        // Course buyer bonus: if this email was entitled by a course purchase,
+        // grant the credits exactly once and refresh the profile snapshot
+        const bonusGranted = await grantCourseBonusIfEligible(user.id, user.email);
+        if (bonusGranted > 0) {
+            const { data: refreshed } = await admin
+                .from('user_profiles')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+            if (refreshed) userProfile = refreshed;
+        }
+
         // Get the plan details from pricing config
         const currentPlan = SUBSCRIPTION_PLANS.find(
             p => p.id === (userProfile as Record<string, unknown>).subscription_tier
@@ -95,6 +108,7 @@ export async function GET() {
                 resetDate: (userProfile as Record<string, unknown>).credits_reset_date,
             },
             transactions,
+            courseBonusGranted: bonusGranted > 0 ? bonusGranted : undefined,
             plans: SUBSCRIPTION_PLANS.map(p => ({
                 id: p.id,
                 name: p.name,

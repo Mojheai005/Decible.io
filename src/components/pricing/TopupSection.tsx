@@ -27,10 +27,10 @@ export function TopupSection({
 
     // Get per-credit rate for current tier
     const tierRates: Record<string, number> = {
-        starter: 1680,
-        creator: 1220,
-        pro: 965,
-        advanced: 650,
+        starter: 3360,
+        creator: 2440,
+        pro: 1930,
+        advanced: 1300,
     };
 
     const currentRate = tierRates[currentTier] || 0;

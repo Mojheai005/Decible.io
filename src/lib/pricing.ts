@@ -82,12 +82,12 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Starter',
         displayName: 'Starter',
         description: 'Great for content creators getting started',
-        priceMonthly: 29900, // ₹299
-        priceYearly: 299000, // ₹2,990/year (10x monthly, save 2 months)
-        priceMonthlyUSD: 400, // $4
-        priceYearlyUSD: 4000, // $40/year
+        priceMonthly: 59800, // ₹598
+        priceYearly: 598000, // ₹5,980/year (10x monthly, save 2 months)
+        priceMonthlyUSD: 800, // $8
+        priceYearlyUSD: 8000, // $80/year
         credits: 35000,
-        topupRate: 1680, // ₹16.80 per 1000 credits
+        topupRate: 3360, // ₹33.60 per 1000 credits
 
         maxCharsPerGeneration: 3000,
         maxGenerationsPerDay: 50,
@@ -110,12 +110,12 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Creator',
         displayName: 'Creator',
         description: 'Ideal for professional content creators',
-        priceMonthly: 69900, // ₹699
-        priceYearly: 699000, // ₹6,990/year (10x monthly, save 2 months)
-        priceMonthlyUSD: 900, // $9
-        priceYearlyUSD: 9000, // $90/year
+        priceMonthly: 139800, // ₹1,398
+        priceYearly: 1398000, // ₹13,980/year (10x monthly, save 2 months)
+        priceMonthlyUSD: 1800, // $18
+        priceYearlyUSD: 18000, // $180/year
         credits: 150000,
-        topupRate: 1220, // ₹12.20 per 1000 credits
+        topupRate: 2440, // ₹24.40 per 1000 credits
 
         maxCharsPerGeneration: 5000,
         maxGenerationsPerDay: 150,
@@ -141,12 +141,12 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Pro',
         displayName: 'Professional',
         description: 'For businesses and power users',
-        priceMonthly: 199900, // ₹1999
-        priceYearly: 1999000, // ₹19,990/year (10x monthly, save 2 months)
-        priceMonthlyUSD: 2500, // $25
-        priceYearlyUSD: 25000, // $250/year
+        priceMonthly: 399800, // ₹3,998
+        priceYearly: 3998000, // ₹39,980/year (10x monthly, save 2 months)
+        priceMonthlyUSD: 5000, // $50
+        priceYearlyUSD: 50000, // $500/year
         credits: 500000,
-        topupRate: 965, // ₹9.65 per 1000 credits
+        topupRate: 1930, // ₹19.30 per 1000 credits
 
         maxCharsPerGeneration: 10000,
         maxGenerationsPerDay: 500,
@@ -172,12 +172,12 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
         name: 'Advanced',
         displayName: 'Enterprise',
         description: 'For agencies and large teams',
-        priceMonthly: 299900, // ₹2999
-        priceYearly: 2999000, // ₹29,990/year (10x monthly, save 2 months)
-        priceMonthlyUSD: 3700, // $37
-        priceYearlyUSD: 37000, // $370/year
+        priceMonthly: 599800, // ₹5,998
+        priceYearly: 5998000, // ₹59,980/year (10x monthly, save 2 months)
+        priceMonthlyUSD: 7400, // $74
+        priceYearlyUSD: 74000, // $740/year
         credits: 1000000,
-        topupRate: 650, // ₹6.50 per 1000 credits
+        topupRate: 1300, // ₹13 per 1000 credits
 
         maxCharsPerGeneration: 15000,
         maxGenerationsPerDay: 1000,
@@ -206,10 +206,10 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
         name: '10,000 Credits',
         credits: 10000,
         priceByTier: {
-            starter: 16800,   // ₹168
-            creator: 12200,   // ₹122
-            pro: 9650,        // ₹96.50
-            advanced: 6500,   // ₹65
+            starter: 33600,     // ₹336
+            creator: 24400,     // ₹244
+            pro: 19300,     // ₹193
+            advanced: 13000,     // ₹130
         },
     },
     {
@@ -217,10 +217,10 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
         name: '25,000 Credits',
         credits: 25000,
         priceByTier: {
-            starter: 42000,   // ₹420
-            creator: 30500,   // ₹305
-            pro: 24125,       // ₹241.25
-            advanced: 16250,  // ₹162.50
+            starter: 84000,     // ₹840
+            creator: 61000,     // ₹610
+            pro: 48250,     // ₹482.50
+            advanced: 32500,     // ₹325
         },
     },
     {
@@ -229,10 +229,10 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
         credits: 50000,
         isPopular: true,
         priceByTier: {
-            starter: 84000,   // ₹840
-            creator: 61000,   // ₹610
-            pro: 48250,       // ₹482.50
-            advanced: 32500,  // ₹325
+            starter: 168000,    // ₹1,680
+            creator: 122000,    // ₹1,220
+            pro: 96500,     // ₹965
+            advanced: 65000,     // ₹650
         },
     },
     {
@@ -240,10 +240,10 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
         name: '100,000 Credits',
         credits: 100000,
         priceByTier: {
-            starter: 168000,  // ₹1,680
-            creator: 122000,  // ₹1,220
-            pro: 96500,       // ₹965
-            advanced: 65000,  // ₹650
+            starter: 336000,    // ₹3,360
+            creator: 244000,    // ₹2,440
+            pro: 193000,    // ₹1,930
+            advanced: 130000,    // ₹1,300
         },
     },
     {
@@ -251,10 +251,10 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
         name: '250,000 Credits',
         credits: 250000,
         priceByTier: {
-            starter: 420000,  // ₹4,200
-            creator: 305000,  // ₹3,050
-            pro: 241250,      // ₹2,412.50
-            advanced: 162500, // ₹1,625
+            starter: 840000,    // ₹8,400
+            creator: 610000,    // ₹6,100
+            pro: 482500,    // ₹4,825
+            advanced: 325000,    // ₹3,250
         },
     },
     {
@@ -262,10 +262,10 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
         name: '500,000 Credits',
         credits: 500000,
         priceByTier: {
-            starter: 840000,  // ₹8,400
-            creator: 610000,  // ₹6,100
-            pro: 482500,      // ₹4,825
-            advanced: 325000, // ₹3,250
+            starter: 1680000,   // ₹16,800
+            creator: 1220000,   // ₹12,200
+            pro: 965000,    // ₹9,650
+            advanced: 650000,    // ₹6,500
         },
     },
 ];

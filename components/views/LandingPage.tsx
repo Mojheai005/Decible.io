@@ -36,7 +36,7 @@ export const LandingPage: React.FC = () => {
     },
     {
       question: "Is Decible affordable for new and growing creators?",
-      answer: "We designed our pricing specifically for creators at every stage. Start free with 5,000 credits to test the platform. Our paid plans start at just ₹299/month — a fraction of what you'd pay for human voiceover artists or competitors like ElevenLabs. As your channel grows, Decible scales with you."
+      answer: "We designed our pricing specifically for creators at every stage. Start free with 5,000 credits to test the platform. Our paid plans start at just ₹598/month — a fraction of what you'd pay for human voiceover artists or competitors like ElevenLabs. As your channel grows, Decible scales with you."
     }
   ];
 
@@ -262,7 +262,7 @@ export const LandingPage: React.FC = () => {
             >
               Create Realistic AI Voiceover
               <br />
-              <span className="text-gray-400">at just ₹3 per Minute</span>
+              <span className="text-gray-400">at just ₹6 per Minute</span>
             </motion.h1>
 
             {/* Subheadline - 18px */}
@@ -949,7 +949,7 @@ export const LandingPage: React.FC = () => {
                     <p className="text-xs text-gray-400">/month</p>
                   </div>
                   <div className="col-span-3 px-4 py-5 text-center border-l border-gray-200 bg-emerald-50">
-                    <span className="text-lg font-bold text-emerald-600">{currency === 'USD' ? '$9' : '₹699'}</span>
+                    <span className="text-lg font-bold text-emerald-600">{currency === 'USD' ? '$18' : '₹1,398'}</span>
                     <p className="text-xs text-emerald-600 font-medium">/month</p>
                   </div>
                 </div>
