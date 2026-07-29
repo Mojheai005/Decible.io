@@ -608,6 +608,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                         {progress.completedChunks} of {progress.totalChunks} chunks completed.
                                         {progress.totalCreditsUsed > 0 && ` ${progress.totalCreditsUsed.toLocaleString()} credits were used for completed chunks.`}
                                         {progress.status === 'error' && ' Failed chunk credits were automatically refunded.'}
+                                        {progress.status === 'cancelled' && ' A chunk that was already generating when you cancelled may still complete and be charged. Completed chunk audio is saved in your History. Remaining chunks were not generated or charged.'}
                                     </p>
                                     <button
                                         onClick={resetProgress}

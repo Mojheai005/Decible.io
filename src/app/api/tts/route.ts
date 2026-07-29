@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTTS, TTS_OUTPUT_FORMAT } from '@/lib/kieai';
+import { generateFishTTS } from '@/lib/fishaudio';
 import { getVoiceById } from '@/lib/voices-data';
 import { CREDITS_CONFIG } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib/rate-limiter';
 
-// Extend Vercel serverless function timeout (max 300s on Pro, 60s on Hobby)
-export const maxDuration = 120;
+// Extend Vercel serverless function timeout to the project's fluid-compute limit.
+// Must comfortably exceed worst-case Kie polling (90s) + audio download + storage
+// upload + refund, so a timeout can never kill the function between the credit
+// deduction and the refund.
+export const maxDuration = 300;
 
 // Get authenticated user
 async function getAuthenticatedUser() {
@@ -58,30 +62,58 @@ async function preDeductCredits(userId: string, amount: number, description: str
     return { success: true, newBalance: result.new_balance };
 }
 
-// Refund credits on generation failure using stored procedure
+// Refund credits on generation failure using stored procedure.
+// Retries with backoff; if every attempt fails, a PENDING_REFUND marker row is
+// written to generation_history so support can find and resolve it (a silent
+// log line alone is not durable).
 async function refundCredits(userId: string, amount: number, referenceId: string, reason: string) {
     const admin = getAdminClient();
+    const RETRY_DELAYS_MS = [0, 500, 2000];
 
-    try {
-        const { error } = await admin.rpc('add_credits', {
-            p_user_id: userId,
-            p_amount: amount,
-            p_type: 'refund',
-            p_description: `Refund: ${reason}`,
-            p_reference_id: referenceId,
-        });
-
-        if (error) {
-            console.error('CRITICAL: Credit refund failed', { userId, amount, referenceId, error });
-            return false;
+    for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+        if (RETRY_DELAYS_MS[attempt] > 0) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
         }
+        try {
+            const { error } = await admin.rpc('add_credits', {
+                p_user_id: userId,
+                p_amount: amount,
+                p_type: 'refund',
+                p_description: `Refund: ${reason}`,
+                p_reference_id: referenceId,
+            });
 
-        console.log(`[Credits] Refunded ${amount} credits to ${userId} — ${reason}`);
-        return true;
-    } catch (err) {
-        console.error('CRITICAL: Credit refund exception', { userId, amount, referenceId, err });
-        return false;
+            if (!error) {
+                console.log(`[Credits] Refunded ${amount} credits to ${userId} — ${reason} (attempt ${attempt + 1})`);
+                return true;
+            }
+            console.error(`Credit refund attempt ${attempt + 1} failed`, { userId, amount, referenceId, error });
+        } catch (err) {
+            console.error(`Credit refund attempt ${attempt + 1} exception`, { userId, amount, referenceId, err });
+        }
     }
+
+    console.error('CRITICAL: Credit refund failed after all retries', { userId, amount, referenceId, reason });
+
+    // Durable marker so the missing refund is discoverable in the database
+    // (uses only columns the normal history insert already relies on)
+    try {
+        await admin.from('generation_history').insert({
+            user_id: userId,
+            text: `PENDING_REFUND: ${amount} credits for ${referenceId} — ${reason}. Automatic refund failed; resolve manually via add_credits.`,
+            voice_id: 'system',
+            voice_name: 'Pending Refund',
+            audio_url: '',
+            characters_used: 0,
+            credits_used: 0,
+            settings: { type: 'pending_refund', amount, referenceId, reason },
+            status: 'failed',
+        });
+    } catch (markerErr) {
+        console.error('CRITICAL: Failed to write PENDING_REFUND marker', { userId, amount, referenceId, markerErr });
+    }
+
+    return false;
 }
 
 // Store audio in Supabase Storage and return public URL
@@ -238,19 +270,29 @@ export async function POST(request: NextRequest) {
             }, { status });
         }
 
-        // 10. Generate TTS using Kie.ai — if this fails, REFUND credits
+        // 10. Generate TTS on the voice's engine — if this fails, REFUND credits
         let audioBuffer: ArrayBuffer;
         try {
-            audioBuffer = await generateTTS({
-                text,
-                voice: voiceNameForApi,
-                voice_settings: voice_settings ? {
-                    stability: Math.round((voice_settings.stability ?? 0.5) * 100) / 100,
-                    similarity_boost: Math.round((voice_settings.similarity_boost ?? 0.75) * 100) / 100,
-                    speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
-                    style: Math.round((voice_settings.style ?? 0) * 100) / 100,
-                } : undefined,
-            });
+            if (voiceData?.engine === 'fish' && voiceData.fishReferenceId) {
+                // Fish Audio S2.1 Pro (synchronous streaming API)
+                audioBuffer = await generateFishTTS({
+                    text,
+                    referenceId: voiceData.fishReferenceId,
+                    speed: Math.round((voice_settings?.speed ?? 1.0) * 100) / 100,
+                });
+            } else {
+                // Gemini 3.1 Flash TTS via Kie.ai
+                audioBuffer = await generateTTS({
+                    text,
+                    voice: voiceNameForApi,
+                    voice_settings: voice_settings ? {
+                        stability: Math.round((voice_settings.stability ?? 0.5) * 100) / 100,
+                        similarity_boost: Math.round((voice_settings.similarity_boost ?? 0.75) * 100) / 100,
+                        speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
+                        style: Math.round((voice_settings.style ?? 0) * 100) / 100,
+                    } : undefined,
+                });
+            }
         } catch (genError) {
             // Generation failed — refund credits
             await refundCredits(userId, creditsNeeded, generationId, 'TTS generation failed');
@@ -304,7 +346,7 @@ export async function POST(request: NextRequest) {
                     { status: 429 }
                 );
             }
-            if (error.message.includes('KIEAI_API_KEY')) {
+            if (error.message.includes('KIEAI_API_KEY') || error.message.includes('FISH_AUDIO_API_KEY')) {
                 return NextResponse.json(
                     { error: 'API configuration error', message: 'TTS service not configured' },
                     { status: 500 }
