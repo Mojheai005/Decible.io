@@ -95,44 +95,68 @@ export async function POST(request: NextRequest) {
                 if (!payment) break;
 
                 const orderId = payment.order_id;
-                const userId = payment.notes?.userId;
-                const credits = parseInt(payment.notes?.credits || '0', 10);
 
-                // Update order status
-                await admin
+                // Atomically claim the right to credit this order.
+                // The /api/payments/verify route races us for the same payment,
+                // and Razorpay retries webhooks on non-2xx. Flipping
+                // credits_added false -> true in a single conditional UPDATE
+                // means exactly one caller ever credits the order.
+                //
+                // user_id and credits are read from our own row, never from
+                // payment.notes — the notes are set at order-creation time and
+                // are not the authoritative record of what was purchased.
+                const { data: claimedOrder, error: claimError } = await admin
                     .from('payment_orders')
                     .update({
                         status: 'completed',
                         razorpay_payment_id: payment.id,
                         completed_at: new Date().toISOString(),
+                        credits_added: true,
                     })
-                    .eq('razorpay_order_id', orderId);
+                    .eq('razorpay_order_id', orderId)
+                    .eq('credits_added', false)
+                    .select('user_id, credits')
+                    .maybeSingle();
 
-                // Add credits if not already added
-                if (userId && credits > 0) {
-                    const { data: orderRecord } = await admin
-                        .from('payment_orders')
-                        .select('credits_added')
-                        .eq('razorpay_order_id', orderId)
-                        .single();
-
-                    const orderData = orderRecord as { credits_added?: boolean } | null;
-                    if (!orderData?.credits_added) {
-                        await admin.rpc('add_credits', {
-                            p_user_id: userId,
-                            p_amount: credits,
-                            p_type: 'topup',
-                            p_description: 'Plan purchase (webhook)',
-                            p_reference_id: payment.id,
-                        });
-
-                        await admin
-                            .from('payment_orders')
-                            .update({ credits_added: true })
-                            .eq('razorpay_order_id', orderId);
-
-                    }
+                if (claimError) {
+                    console.error('[Webhook] Failed to claim order for crediting:', claimError);
+                    // Non-2xx so Razorpay retries.
+                    return NextResponse.json({ error: 'Claim failed' }, { status: 500 });
                 }
+
+                if (!claimedOrder) {
+                    // Already credited by /verify or an earlier delivery of this
+                    // same webhook. Nothing to do — acknowledge and stop.
+                    break;
+                }
+
+                const claimed = claimedOrder as { user_id: string; credits: number };
+
+                const { error: creditError } = await admin.rpc('add_credits', {
+                    p_user_id: claimed.user_id,
+                    p_amount: claimed.credits,
+                    p_type: 'topup',
+                    p_description: 'Plan purchase (webhook)',
+                    p_reference_id: payment.id,
+                });
+
+                if (creditError) {
+                    // Release the claim and fail loudly so Razorpay redelivers.
+                    await admin
+                        .from('payment_orders')
+                        .update({ credits_added: false })
+                        .eq('razorpay_order_id', orderId);
+
+                    console.error('[Webhook] CRITICAL: claim succeeded but add_credits failed', {
+                        orderId,
+                        userId: claimed.user_id,
+                        credits: claimed.credits,
+                        creditError,
+                    });
+
+                    return NextResponse.json({ error: 'Credit apply failed' }, { status: 500 });
+                }
+
                 break;
             }
 

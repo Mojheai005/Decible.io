@@ -99,30 +99,73 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // 5. Update order status
-        await admin
+        // 5. Atomically claim the right to credit this order.
+        // The Razorpay webhook races this route for the same payment. Whoever
+        // flips credits_added from false -> true wins; the loser matches zero
+        // rows and skips crediting. Without this guard both paths credit the
+        // same order and the user receives double.
+        const { data: claimedOrder, error: claimError } = await admin
             .from('payment_orders')
             .update({
                 status: 'completed',
                 razorpay_payment_id,
                 razorpay_signature,
                 completed_at: new Date().toISOString(),
+                credits_added: true,
             })
-            .eq('id', orderData.id);
+            .eq('id', orderData.id)
+            .eq('credits_added', false)
+            .select('credits')
+            .maybeSingle();
+
+        if (claimError) {
+            console.error('[Payment] Failed to claim order for crediting:', claimError);
+            return NextResponse.json(
+                { error: 'Payment verification failed' },
+                { status: 500 }
+            );
+        }
+
+        if (!claimedOrder) {
+            // The webhook got here first and already credited this order.
+            return NextResponse.json({
+                success: true,
+                message: 'Payment already processed',
+                credits: orderData.credits,
+            });
+        }
 
         // 6. Add credits to user using stored procedure
-        // The add_credits function logs the transaction internally
+        // The add_credits function logs the transaction internally.
+        // Amount comes from the claimed DB row, never from client input.
+        const claimedCredits = (claimedOrder as { credits: number }).credits;
         const { data: newBalance, error: creditError } = await admin.rpc('add_credits', {
             p_user_id: user.id,
-            p_amount: orderData.credits,
+            p_amount: claimedCredits,
             p_type: 'topup',
             p_description: `${orderData.plan_id} plan purchase`,
             p_reference_id: razorpay_payment_id,
         });
 
         if (creditError) {
-            console.error(`[Payment] Failed to add credits:`, creditError);
-            // Log this for manual resolution but don't fail the response
+            // Release the claim so the webhook (or a retry) can credit instead
+            // of the payment being silently swallowed.
+            await admin
+                .from('payment_orders')
+                .update({ credits_added: false })
+                .eq('id', orderData.id);
+
+            console.error('[Payment] CRITICAL: claim succeeded but add_credits failed', {
+                orderId: orderData.id,
+                userId: user.id,
+                credits: claimedCredits,
+                creditError,
+            });
+
+            return NextResponse.json(
+                { error: 'Payment captured but credits could not be applied. Support has been notified.' },
+                { status: 500 }
+            );
         }
 
         // 7. Update user subscription tier based on plan

@@ -44,7 +44,7 @@ interface UseUserProfileResult {
     isLoading: boolean
     error: string | null
     refetch: () => Promise<void>
-    useCredits: (amount: number, type?: string) => Promise<boolean>
+    useCredits: (amount: number) => Promise<boolean>
 }
 
 // --- SessionStorage cache for profile ---
@@ -312,12 +312,14 @@ export function useUserProfile(enabled = true): UseUserProfileResult {
         return () => { window.removeEventListener('credits-updated', handleCreditsUpdated) }
     }, [enabled, fetchProfile])
 
-    const useCredits = useCallback(async (amount: number, type?: string): Promise<boolean> => {
+    const useCredits = useCallback(async (amount: number): Promise<boolean> => {
         try {
+            // Payload must match the POST handler in /api/user/profile, which
+            // dispatches on `action` and reads `amount`.
             const response = await fetch('/api/user/profile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ creditsUsed: amount, type }),
+                body: JSON.stringify({ action: 'use_credits', amount }),
             })
 
             if (!response.ok) {

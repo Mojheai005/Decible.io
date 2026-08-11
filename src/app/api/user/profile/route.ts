@@ -136,38 +136,42 @@ export async function POST(request: Request) {
         const { action, amount } = body;
 
         if (action === 'use_credits' && amount) {
+            if (!Number.isInteger(amount) || amount <= 0) {
+                return NextResponse.json({ error: 'Invalid credit amount' }, { status: 400 });
+            }
+
             const admin = getAdminClient();
 
-            // Deduct credits from user profile
-            const { data: profile } = await admin
-                .from('user_profiles')
-                .select('credits_remaining, credits_used_this_month')
-                .eq('id', user.id)
-                .single();
+            // Deduct via the row-locked stored procedure rather than a
+            // read-modify-write. Two concurrent requests reading the same
+            // balance and both writing `remaining - amount` would silently
+            // grant free credits; use_credits() takes FOR UPDATE on the
+            // profile row and writes the credit_transactions ledger entry.
+            const { data, error: rpcError } = await admin.rpc('use_credits', {
+                p_user_id: user.id,
+                p_amount: amount,
+                p_description: 'Credit usage',
+                p_reference_id: null,
+            });
 
-            if (!profile) {
-                return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+            if (rpcError) {
+                console.error('Credit deduction RPC error:', rpcError);
+                return NextResponse.json({ error: 'Credit deduction failed' }, { status: 500 });
             }
 
-            const currentProfile = profile as { credits_remaining: number; credits_used_this_month: number };
-            const remaining = currentProfile.credits_remaining || 0;
+            const result = (Array.isArray(data) ? data[0] : data) as
+                { success: boolean; new_balance: number; error_message: string | null } | null;
 
-            if (remaining < amount) {
-                return NextResponse.json({ error: 'Insufficient credits' }, { status: 400 });
+            if (!result?.success) {
+                const message = result?.error_message || 'Credit deduction failed';
+                const status = message.includes('Insufficient') ? 402 : 400;
+                return NextResponse.json({ error: message }, { status });
             }
-
-            await admin
-                .from('user_profiles')
-                .update({
-                    credits_remaining: remaining - amount,
-                    credits_used_this_month: (currentProfile.credits_used_this_month || 0) + amount,
-                })
-                .eq('id', user.id);
 
             return NextResponse.json({
                 success: true,
                 message: `Used ${amount} credits`,
-                remainingCredits: remaining - amount,
+                remainingCredits: result.new_balance,
             });
         }
 
