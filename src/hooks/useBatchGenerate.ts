@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { chunkText, TextChunk, ChunkPlan } from '@/lib/text-chunker'
+import { getMaxCharsForVoice } from '@/lib/voices-data'
 import { updateCreditsOptimistic } from '@/hooks/useUserProfile'
 
 // ===========================================
@@ -11,6 +12,11 @@ import { updateCreditsOptimistic } from '@/hooks/useUserProfile'
 // ===========================================
 
 export type BatchStatus = 'idle' | 'chunking' | 'generating' | 'stitching' | 'complete' | 'error' | 'cancelled'
+
+// Transient failures (network blips, cold starts, brief rate limits) used to
+// destroy an entire multi-chunk voiceover. Retry before surrendering the run.
+const CHUNK_MAX_ATTEMPTS = 3
+const CHUNK_RETRY_DELAYS_MS = [1500, 4000]
 
 export interface ChunkResult {
     index: number
@@ -31,6 +37,9 @@ export interface BatchProgress {
     estimatedTimeRemaining: number | null
     finalAudioUrl: string | null
     error: string | null
+    // Set when the run stopped early but usable audio was still produced.
+    // The audio in finalAudioUrl covers the script UP TO this point.
+    partial: { chunkNumber: number; totalChunks: number; message: string } | null
 }
 
 interface GenerateChunkParams {
@@ -58,6 +67,7 @@ export function useBatchGenerate() {
         estimatedTimeRemaining: null,
         finalAudioUrl: null,
         error: null,
+        partial: null,
     })
 
     const abortRef = useRef(false)
@@ -77,6 +87,7 @@ export function useBatchGenerate() {
             estimatedTimeRemaining: null,
             finalAudioUrl: null,
             error: null,
+            partial: null,
         })
     }, [])
 
@@ -88,8 +99,11 @@ export function useBatchGenerate() {
     /**
      * Get chunk plan without generating — for previewing cost/chunks
      */
-    const getChunkPlan = useCallback((text: string): ChunkPlan => {
-        return chunkText(text)
+    const getChunkPlan = useCallback((text: string, voiceId?: string): ChunkPlan => {
+        // Chunk to the CEILING OF THE CHOSEN VOICE'S ENGINE. A flat limit was
+        // the root cause of silent truncation: Gemini cannot reliably speak
+        // the 1800-char chunks the old chunker produced.
+        return chunkText(text, voiceId ? getMaxCharsForVoice(voiceId) : undefined)
     }, [])
 
     /**
@@ -173,8 +187,8 @@ export function useBatchGenerate() {
         chunkTimesRef.current = []
 
         // Step 1: Chunk text
-        setProgress(prev => ({ ...prev, status: 'chunking', error: null, finalAudioUrl: null }))
-        const plan = chunkText(fullText)
+        setProgress(prev => ({ ...prev, status: 'chunking', error: null, finalAudioUrl: null, partial: null }))
+        const plan = chunkText(fullText, getMaxCharsForVoice(voiceId))
 
         const initialResults: ChunkResult[] = plan.chunks.map(c => ({
             index: c.index,
@@ -201,6 +215,7 @@ export function useBatchGenerate() {
         }
 
         // Step 2: Generate each chunk sequentially
+        let partialFailure: { chunkNumber: number; totalChunks: number; message: string } | null = null
         let totalCreditsUsed = 0
         let latestCreditsRemaining = 0
         const results = [...initialResults]
@@ -219,12 +234,37 @@ export function useBatchGenerate() {
             }))
 
             try {
-                const result = await generateChunk({
-                    text: chunk.text,
-                    voiceId,
-                    voiceName,
-                    settings: voiceSettings,
-                })
+                // Retry transient failures before giving up on the run.
+                // A single blip used to destroy an entire multi-chunk voiceover.
+                let result: Awaited<ReturnType<typeof generateChunk>> | null = null
+                let lastErr: unknown = null
+                for (let attempt = 0; attempt < CHUNK_MAX_ATTEMPTS; attempt++) {
+                    if (attempt > 0) {
+                        await new Promise(r => setTimeout(r, CHUNK_RETRY_DELAYS_MS[attempt - 1]))
+                        setProgress(prev => ({
+                            ...prev,
+                            error: `Chunk ${chunk.index + 1} failed, retrying (${attempt}/${CHUNK_MAX_ATTEMPTS - 1})...`,
+                        }))
+                    }
+                    try {
+                        result = await generateChunk({
+                            text: chunk.text,
+                            voiceId,
+                            voiceName,
+                            settings: voiceSettings,
+                        })
+                        lastErr = null
+                        break
+                    } catch (e) {
+                        lastErr = e
+                        // A refused request (too long, out of credits, rate limited)
+                        // will not succeed on retry — fail fast instead of waiting.
+                        const msg = e instanceof Error ? e.message : ''
+                        if (/too long|insufficient|rate limit/i.test(msg)) break
+                    }
+                }
+                if (!result) throw lastErr instanceof Error ? lastErr : new Error('Chunk generation failed')
+                setProgress(prev => ({ ...prev, error: null }))
 
                 totalCreditsUsed += result.creditsUsed
                 latestCreditsRemaining = result.creditsRemaining
@@ -274,13 +314,19 @@ export function useBatchGenerate() {
 
                 setProgress(prev => ({
                     ...prev,
-                    status: 'error',
                     chunkResults: [...results],
                     totalCreditsUsed,
-                    error: `Chunk ${chunk.index + 1} failed: ${errorMsg}`,
                 }))
 
-                return null
+                // DO NOT discard the work already paid for. Everything before
+                // this chunk generated and was charged; stitch and deliver it,
+                // clearly labelled as partial, instead of losing the lot.
+                partialFailure = {
+                    chunkNumber: chunk.index + 1,
+                    totalChunks: plan.chunks.length,
+                    message: errorMsg,
+                }
+                break
             }
         }
 
@@ -300,7 +346,9 @@ export function useBatchGenerate() {
             setProgress(prev => ({
                 ...prev,
                 status: 'error',
-                error: 'No audio chunks generated',
+                error: partialFailure
+                    ? `Generation failed on part 1 of ${partialFailure.totalChunks}: ${partialFailure.message}`
+                    : 'No audio chunks generated',
             }))
             return null
         }
@@ -314,6 +362,12 @@ export function useBatchGenerate() {
                 finalAudioUrl: audioUrls[0],
                 totalCreditsUsed,
                 estimatedTimeRemaining: null,
+                partial: partialFailure,
+                error: partialFailure
+                    ? `Stopped at part ${partialFailure.chunkNumber} of ${partialFailure.totalChunks}. `
+                      + `The audio below covers your script up to that point. `
+                      + `Nothing was charged for the parts that failed.`
+                    : null,
             }))
             return audioUrls[0]
         }
@@ -328,6 +382,12 @@ export function useBatchGenerate() {
                 finalAudioUrl: finalUrl,
                 totalCreditsUsed,
                 estimatedTimeRemaining: null,
+                partial: partialFailure,
+                error: partialFailure
+                    ? `Stopped at part ${partialFailure.chunkNumber} of ${partialFailure.totalChunks}. `
+                      + `The audio below covers your script up to that point. `
+                      + `Nothing was charged for the parts that failed.`
+                    : null,
             }))
 
             return finalUrl

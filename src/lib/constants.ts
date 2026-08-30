@@ -89,6 +89,67 @@ export const GENERATION_LIMITS = {
     DEFAULT_SPEED: VOICE_SETTINGS.SPEED.DEFAULT,
 } as const
 
+// ===========================================
+// TTS ENGINE LIMITS
+// ===========================================
+// Measured against the live APIs on 2026-08-30 by scripts/voice-audit.py,
+// which sends a checkpointed script and TRANSCRIBES the result to see how
+// much was actually spoken (not a duration heuristic).
+//
+// GEMINI (Kie.ai, google/gemini-3-1-flash-tts) — UNRELIABLE ABOVE ~1.2k CHARS
+//   1,159 chars -> spoken in full, 16.8 chars/sec (healthy)
+//   1,449 chars -> model ran away: 566s of audio for ~90s of text, 284s wall
+//   1,884 / 2,899 chars -> never returned inside the poll window
+//   4,888 chars -> 17 of 26 voices truncated; coverage ranged 21.9%-100%
+//                  (orus/puck/aoede 21.9%, alnilam/sadachbia 25%, ...)
+//   Truncation is PER VOICE and cannot be predicted from voice metadata,
+//   which is why it looked random in production.
+//
+// FISH (api.fish.audio, s2.1-pro) — RELIABLE
+//   4,888 chars -> 8 of 8 voices spoke 32/32 checkpoints, 100% coverage.
+//
+// Chunk sizes below sit under the proven-good ceiling for each engine.
+export const ENGINE_LIMITS = {
+    gemini: {
+        maxCharsPerRequest: 1000,   // proven good at 1,159; breaks by 1,449
+        pollTimeoutMs: 180_000,
+    },
+    fish: {
+        maxCharsPerRequest: 4000,   // proven good at 4,888
+        pollTimeoutMs: 300_000,
+    },
+} as const
+
+export type TTSEngine = keyof typeof ENGINE_LIMITS
+
+// Used when the engine is unknown — the conservative (Gemini) ceiling.
+export const DEFAULT_MAX_CHARS_PER_REQUEST = ENGINE_LIMITS.gemini.maxCharsPerRequest
+
+// Gemini truncation is NON-DETERMINISTIC. Measured 2026-08-30: the same voice,
+// same text, same length returned 100%, 71.4%, 100%, 100% (Charon) and
+// 100%, 100%, 100%, 57.1% (Orus) across four consecutive runs. Roughly 1 in 4
+// requests drops text even at a safe size, so no character ceiling can make it
+// reliable — the output must be checked and RETRIED. Three attempts takes a
+// ~20% per-request failure rate to well under 1%.
+export const TTS_MAX_ATTEMPTS = 3
+
+// Truncation detector threshold, in characters of script per second of audio.
+//
+// Measured healthy Gemini output: 7.3, 15.4 and 16.8 chars/sec (pace Natural).
+// A badly truncated run measured 44.3. Sitting the line at 20 catches anything
+// below roughly 85% coverage while leaving headroom above the fastest healthy
+// run observed.
+//
+// This is scaled by the user's speed setting at call time — "Rapid Fire" pace
+// legitimately raises the rate and must not be flagged.
+//
+// HONEST LIMIT: duration cannot separate MILD truncation (>85% spoken) from
+// naturally fast speech, so a small shortfall can still pass. Severe cases —
+// the 21%-57% ones that prompted this work — are caught reliably. Erring
+// toward false positives is deliberate: a false positive costs one retry,
+// a false negative charges a user for a script they did not receive.
+export const MAX_PLAUSIBLE_CHARS_PER_SECOND = 20
+
 // Credits
 export const CREDITS_CONFIG = {
     FREE_TIER_CREDITS: 5000,

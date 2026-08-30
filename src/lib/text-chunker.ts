@@ -1,8 +1,14 @@
 // ===========================================
 // TEXT CHUNKER — Split scripts at paragraph boundaries
-// Target: 1500-1800 CHARACTERS per chunk
-// Never splits mid-sentence
+// Never splits mid-sentence.
+//
+// The chunk ceiling is ENGINE-SPECIFIC and must be passed in. It used to be a
+// flat 1800 for every voice, which sat well above what Gemini can actually
+// speak (~1.2k) — so every long script was fed chunks the engine silently
+// truncated while the user was charged in full. See ENGINE_LIMITS in
+// constants.ts for the measured evidence.
 // ===========================================
+import { DEFAULT_MAX_CHARS_PER_REQUEST } from './constants'
 
 export interface TextChunk {
     index: number
@@ -18,9 +24,9 @@ export interface ChunkPlan {
     totalCredits: number
 }
 
-const MIN_CHARS_PER_CHUNK = 800
-const MAX_CHARS_PER_CHUNK = 1800
-const MIN_CHARS_FOR_MERGE = 400
+// Chunks smaller than this are merged into the previous one, scaled to the
+// engine ceiling so a 1000-char limit does not leave 400-char stragglers.
+const MERGE_THRESHOLD_RATIO = 0.22
 
 function countWords(text: string): number {
     return text.trim().split(/\s+/).filter(Boolean).length
@@ -28,16 +34,16 @@ function countWords(text: string): number {
 
 /**
  * Split a single long paragraph into sentence-bounded segments.
- * Used when a paragraph exceeds MAX_CHARS_PER_CHUNK on its own.
+ * Used when a paragraph exceeds the engine ceiling on its own.
  */
-function splitLongParagraph(paragraph: string): string[] {
+function splitLongParagraph(paragraph: string, maxChars: number): string[] {
     const sentences = paragraph.match(/[^.!?]+[.!?]+[\s]*/g) || [paragraph]
     const result: string[] = []
     let current = ''
 
     for (const sentence of sentences) {
         const combined = current + sentence
-        if (combined.length > MAX_CHARS_PER_CHUNK && current) {
+        if (combined.length > maxChars && current) {
             result.push(current.trim())
             current = sentence
         } else {
@@ -53,11 +59,19 @@ function splitLongParagraph(paragraph: string): string[] {
 }
 
 /**
- * Split text into chunks at paragraph boundaries.
- * Each chunk stays under 1800 characters.
- * Falls back to sentence splitting for very long paragraphs.
+ * Split text into chunks at paragraph boundaries, each under `maxChars`.
+ * Falls back to sentence splitting for very long paragraphs, and to hard
+ * character splitting for a single sentence longer than the ceiling
+ * (previously such a sentence was emitted oversized and silently truncated
+ * by the engine).
+ *
+ * @param maxChars per-engine ceiling — see ENGINE_LIMITS in constants.ts
  */
-export function chunkText(fullText: string): ChunkPlan {
+export function chunkText(
+    fullText: string,
+    maxChars: number = DEFAULT_MAX_CHARS_PER_REQUEST,
+): ChunkPlan {
+    const mergeThreshold = Math.floor(maxChars * MERGE_THRESHOLD_RATIO)
     const normalized = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     const rawParagraphs = normalized.split(/\n\s*\n/)
     const paragraphs = rawParagraphs
@@ -68,7 +82,7 @@ export function chunkText(fullText: string): ChunkPlan {
     const totalChars = fullText.trim().length
 
     // If total text fits in one chunk, return as-is
-    if (totalChars <= MAX_CHARS_PER_CHUNK) {
+    if (totalChars <= maxChars) {
         return {
             chunks: [{
                 index: 0,
@@ -85,21 +99,44 @@ export function chunkText(fullText: string): ChunkPlan {
     // Flatten paragraphs — split any that are too long on their own
     const segments: string[] = []
     for (const para of paragraphs) {
-        if (para.length > MAX_CHARS_PER_CHUNK) {
-            segments.push(...splitLongParagraph(para))
+        if (para.length > maxChars) {
+            segments.push(...splitLongParagraph(para, maxChars))
         } else {
             segments.push(para)
         }
+    }
+
+    // A single sentence can still exceed the ceiling. Split it on word
+    // boundaries rather than shipping an oversized chunk the engine will
+    // silently truncate.
+    const bounded: string[] = []
+    for (const seg of segments) {
+        if (seg.length <= maxChars) {
+            bounded.push(seg)
+            continue
+        }
+        const words = seg.split(/\s+/)
+        let buf = ''
+        for (const word of words) {
+            const next = buf ? `${buf} ${word}` : word
+            if (next.length > maxChars && buf) {
+                bounded.push(buf)
+                buf = word
+            } else {
+                buf = next
+            }
+        }
+        if (buf.trim()) bounded.push(buf.trim())
     }
 
     // Accumulate segments into chunks based on CHARACTER limit
     const chunks: TextChunk[] = []
     let currentText = ''
 
-    for (const segment of segments) {
+    for (const segment of bounded) {
         const combined = currentText ? `${currentText}\n\n${segment}` : segment
 
-        if (combined.length > MAX_CHARS_PER_CHUNK && currentText) {
+        if (combined.length > maxChars && currentText) {
             // Current chunk is full — finalize it
             const trimmed = currentText.trim()
             chunks.push({
@@ -128,13 +165,15 @@ export function chunkText(fullText: string): ChunkPlan {
     // Merge tiny last chunk into previous if it's too small
     if (chunks.length > 1) {
         const last = chunks[chunks.length - 1]
-        if (last.charCount < MIN_CHARS_FOR_MERGE) {
+        if (last.charCount < mergeThreshold) {
             const prev = chunks[chunks.length - 2]
             const merged = `${prev.text}\n\n${last.text}`
-            prev.text = merged
-            prev.wordCount = countWords(merged)
-            prev.charCount = merged.length
-            chunks.pop()
+            if (merged.length <= maxChars) {
+                prev.text = merged
+                prev.wordCount = countWords(merged)
+                prev.charCount = merged.length
+                chunks.pop()
+            }
         }
     }
 

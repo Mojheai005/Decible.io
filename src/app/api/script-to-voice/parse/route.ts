@@ -76,7 +76,10 @@ export async function POST(request: NextRequest) {
             }, { status: 400 });
         }
 
-        // 6. Generate chunk plan
+        // 6. Generate chunk plan.
+        // No voice is chosen at upload time, so this uses the conservative
+        // (Gemini) ceiling. The authoritative plan is recomputed client-side
+        // against the actual selected voice before generation runs.
         const plan = chunkText(extractedText.trim());
 
         return NextResponse.json({

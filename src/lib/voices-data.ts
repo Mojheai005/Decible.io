@@ -4,6 +4,8 @@
 // Static previews via: https://static.aiquickdraw.com/elevenlabs/voice/<id>.mp3
 // ===========================================
 
+import { ENGINE_LIMITS, type TTSEngine } from './constants'
+
 export interface VoiceData {
     id: string           // Unique identifier (voice name lowercase, no spaces)
     name: string         // Display name shown to user
@@ -1381,6 +1383,43 @@ export const VOICES_DATA: VoiceData[] = [
 
 // Voices shown in the library UI
 export const VISIBLE_VOICES: VoiceData[] = VOICES_DATA.filter(v => !v.hidden)
+
+// ===========================================
+// ENGINE RELIABILITY — measured, not assumed
+// ===========================================
+// scripts/voice-audit.py, 2026-08-30: sent a 4,888-char checkpointed script to
+// every voice and TRANSCRIBED the audio to see how much was actually spoken.
+//
+//   FISH   — 8 of 8 voices spoke 100% of the script. No truncation observed.
+//   GEMINI — 21 of 30 voices truncated. Coverage ranged 9.4% to 96.9%:
+//            zubenelgenubi 9.4%, aoede/orus/puck 21.9%, alnilam/sadachbia 25%,
+//            callirrhoe 37.5%, autonoe/gacrux 40.6%, ... umbriel 81.2%,
+//            iapetus/laomedeia 90.6%.
+//
+// Critically, the failure is NON-DETERMINISTIC. The same voice with the same
+// 939-char text returned 100%, 71.4%, 100%, 100% (Charon) across four runs.
+// The 9 voices that scored 100% are therefore NOT safe — they had a good run.
+// No character limit fixes this, and duration-based detection cannot catch
+// mild cases (an 85.7% truncation measured 15.7 chars/sec, indistinguishable
+// from healthy speech at 15.4).
+//
+// Consequence: Gemini is not fit for long-form narration, where a user cannot
+// easily tell that a paragraph went missing and has already been charged.
+export function isReliableForLongForm(voiceId: string): boolean {
+    return getVoiceEngine(voiceId) === 'fish'
+}
+
+// Resolve the TTS engine that will actually serve a voice.
+// Anything without an explicit engine goes to Gemini via Kie.ai.
+export function getVoiceEngine(voiceId: string): TTSEngine {
+    return getVoiceById(voiceId)?.engine === 'fish' ? 'fish' : 'gemini'
+}
+
+// Max characters we may send in ONE request for this voice's engine.
+// Gemini silently truncates well below Fish's ceiling — see ENGINE_LIMITS.
+export function getMaxCharsForVoice(voiceId: string): number {
+    return ENGINE_LIMITS[getVoiceEngine(voiceId)].maxCharsPerRequest
+}
 
 // Helper functions
 // Lookups search the FULL catalog (incl. hidden) so history and saved voices keep working

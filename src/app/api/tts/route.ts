@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTTS, TTS_OUTPUT_FORMAT } from '@/lib/kieai';
 import { generateFishTTS } from '@/lib/fishaudio';
-import { getVoiceById } from '@/lib/voices-data';
-import { CREDITS_CONFIG } from '@/lib/constants';
+import { getVoiceById, getVoiceEngine } from '@/lib/voices-data';
+import { CREDITS_CONFIG, ENGINE_LIMITS, MAX_PLAUSIBLE_CHARS_PER_SECOND, TTS_MAX_ATTEMPTS } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib/rate-limiter';
@@ -116,6 +116,64 @@ async function refundCredits(userId: string, amount: number, referenceId: string
     return false;
 }
 
+// Read the real duration of a WAV buffer from its RIFF header.
+// Returns null if the buffer is not parseable as WAV.
+function wavDurationSeconds(buffer: ArrayBuffer): number | null {
+    try {
+        const view = new DataView(buffer);
+        if (buffer.byteLength < 44) return null;
+        const tag = (off: number) =>
+            String.fromCharCode(view.getUint8(off), view.getUint8(off + 1),
+                                view.getUint8(off + 2), view.getUint8(off + 3));
+        if (tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return null;
+
+        let pos = 12;
+        let byteRate = 0;
+        let dataBytes = 0;
+        while (pos + 8 <= buffer.byteLength) {
+            const id = tag(pos);
+            const size = view.getUint32(pos + 4, true);
+            if (id === 'fmt ') {
+                byteRate = view.getUint32(pos + 12, true);
+            } else if (id === 'data') {
+                dataBytes = Math.min(size, buffer.byteLength - (pos + 8));
+                break;
+            }
+            pos += 8 + size + (size % 2);
+        }
+        if (!byteRate || !dataBytes) return null;
+        return dataBytes / byteRate;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Detect the silent-truncation failure that was overcharging users.
+ *
+ * Engines (Gemini especially) sometimes return audio covering only part of the
+ * submitted text while reporting success — measured at 21.9%-96.9% coverage
+ * across 17 of 26 Gemini voices. The user was charged for every character.
+ *
+ * Real speech runs ~13-18 chars/sec. If the returned audio implies a rate
+ * faster than MAX_PLAUSIBLE_CHARS_PER_SECOND, text was skipped.
+ * Returns null when the audio looks complete.
+ */
+function detectTruncation(audio: ArrayBuffer, charCount: number, speed = 1.0): string | null {
+    const seconds = wavDurationSeconds(audio);
+    if (seconds === null || seconds <= 0) return null; // unparseable — do not block
+    const rate = charCount / seconds;
+    // A faster requested pace legitimately raises chars/sec; don't punish it.
+    const ceiling = MAX_PLAUSIBLE_CHARS_PER_SECOND * Math.max(1, speed);
+    if (rate > ceiling) {
+        const pct = Math.round((ceiling / rate) * 100);
+        return `engine returned ~${pct}% of the requested text `
+             + `(${charCount} chars in ${seconds.toFixed(1)}s = ${rate.toFixed(1)} chars/sec, `
+             + `ceiling ${ceiling.toFixed(1)})`;
+    }
+    return null;
+}
+
 // Store audio in Supabase Storage and return public URL
 async function storeAudioInBucket(userId: string, generationId: string, audioBuffer: ArrayBuffer): Promise<string | null> {
     try {
@@ -218,6 +276,23 @@ export async function POST(request: NextRequest) {
         const charactersUsed = text.length;
         const creditsNeeded = charactersUsed * CREDITS_CONFIG.COST_PER_CHARACTER;
 
+        // 4b. Reject anything above the engine's proven-safe ceiling BEFORE
+        // charging. Previously this was unbounded: oversized text was accepted,
+        // billed in full, and silently truncated by the engine.
+        const engine = getVoiceEngine(voice_id);
+        const engineMaxChars = ENGINE_LIMITS[engine].maxCharsPerRequest;
+        if (charactersUsed > engineMaxChars) {
+            return NextResponse.json({
+                error: 'Text too long for this voice',
+                engine,
+                maxCharsPerRequest: engineMaxChars,
+                charactersSubmitted: charactersUsed,
+                message: `This voice runs on ${engine}, which reliably handles `
+                    + `${engineMaxChars} characters per request. Split the text into `
+                    + `smaller parts (Script to Voice does this automatically).`,
+            }, { status: 413 });
+        }
+
         // 5. Check if user has enough credits
         if (profile.credits_remaining < creditsNeeded) {
             return NextResponse.json({
@@ -270,33 +345,80 @@ export async function POST(request: NextRequest) {
             }, { status });
         }
 
-        // 10. Generate TTS on the voice's engine — if this fails, REFUND credits
-        let audioBuffer: ArrayBuffer;
-        try {
+        // 10. Generate, VERIFYING each result and retrying partial output.
+        //
+        // Gemini returns a "success" response containing only part of the text
+        // roughly 1 in 4 times, at any length — it is non-deterministic, so no
+        // input size makes it safe. Previously that partial audio was stored
+        // and billed in full. Now every result is measured, and a truncated
+        // one is thrown away and re-requested rather than sold to the user.
+        const runEngine = async (): Promise<ArrayBuffer> => {
             if (voiceData?.engine === 'fish' && voiceData.fishReferenceId) {
                 // Fish Audio S2.1 Pro (synchronous streaming API)
-                audioBuffer = await generateFishTTS({
+                return generateFishTTS({
                     text,
                     referenceId: voiceData.fishReferenceId,
                     speed: Math.round((voice_settings?.speed ?? 1.0) * 100) / 100,
                 });
-            } else {
-                // Gemini 3.1 Flash TTS via Kie.ai
-                audioBuffer = await generateTTS({
-                    text,
-                    voice: voiceNameForApi,
-                    voice_settings: voice_settings ? {
-                        stability: Math.round((voice_settings.stability ?? 0.5) * 100) / 100,
-                        similarity_boost: Math.round((voice_settings.similarity_boost ?? 0.75) * 100) / 100,
-                        speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
-                        style: Math.round((voice_settings.style ?? 0) * 100) / 100,
-                    } : undefined,
-                });
             }
-        } catch (genError) {
-            // Generation failed — refund credits
-            await refundCredits(userId, creditsNeeded, generationId, 'TTS generation failed');
-            throw genError; // Let outer catch handle the error response
+            // Gemini 3.1 Flash TTS via Kie.ai
+            return generateTTS({
+                text,
+                voice: voiceNameForApi,
+                voice_settings: voice_settings ? {
+                    stability: Math.round((voice_settings.stability ?? 0.5) * 100) / 100,
+                    similarity_boost: Math.round((voice_settings.similarity_boost ?? 0.75) * 100) / 100,
+                    speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
+                    style: Math.round((voice_settings.style ?? 0) * 100) / 100,
+                } : undefined,
+            });
+        };
+
+        let audioBuffer: ArrayBuffer | null = null;
+        let lastTruncation: string | null = null;
+
+        for (let attempt = 1; attempt <= TTS_MAX_ATTEMPTS; attempt++) {
+            let candidate: ArrayBuffer;
+            try {
+                candidate = await runEngine();
+            } catch (genError) {
+                // Hard failure from the engine — refund and surface it.
+                await refundCredits(userId, creditsNeeded, generationId, 'TTS generation failed');
+                throw genError;
+            }
+
+            const truncation = detectTruncation(candidate, charactersUsed,
+                voice_settings?.speed ?? 1.0);
+            if (!truncation) {
+                if (attempt > 1) {
+                    console.log(`[TTS] Recovered from truncation on attempt ${attempt}`,
+                        { generationId, voice_id, engine });
+                }
+                audioBuffer = candidate;
+                break;
+            }
+
+            lastTruncation = truncation;
+            console.warn(`[TTS] Truncated output on attempt ${attempt}/${TTS_MAX_ATTEMPTS}`,
+                { userId, generationId, voice_id, engine, charactersUsed, truncation });
+        }
+
+        // Every attempt came back short — refund in full rather than selling
+        // the user a partial voiceover.
+        if (!audioBuffer) {
+            console.error('[TTS] All attempts truncated', {
+                userId, generationId, voice_id, engine, charactersUsed, lastTruncation,
+            });
+            await refundCredits(userId, creditsNeeded, generationId,
+                `Truncated after ${TTS_MAX_ATTEMPTS} attempts: ${lastTruncation}`);
+            return NextResponse.json({
+                error: 'Incomplete audio',
+                message: 'The voice engine kept returning only part of your script, '
+                    + 'so nothing was charged. Please try a different voice — '
+                    + 'the Fish Audio voices are the most reliable for long text.',
+                detail: lastTruncation,
+                refunded: creditsNeeded,
+            }, { status: 502 });
         }
 
         // 11. Store audio in Supabase Storage — if this fails, REFUND credits

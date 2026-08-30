@@ -11,6 +11,7 @@ import { useBatchGenerate, BatchStatus } from '@/hooks/useBatchGenerate';
 import { useVoices } from '@/hooks/useVoices';
 import { VoiceDropdown } from '@/components/ui/VoiceDropdown';
 import { chunkText } from '@/lib/text-chunker';
+import { isReliableForLongForm } from '@/lib/voices-data';
 import { CREDITS_CONFIG } from '@/lib/constants';
 import { getTierPermissions } from '@/lib/pricing';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -110,7 +111,15 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
     }
 
     // Chunk preview
-    const plan = scriptText.trim() ? getChunkPlan(scriptText) : null;
+    // Measured 2026-08-30: 21 of 30 Gemini voices silently dropped part of a
+    // long script while charging in full, and the failure is random rather
+    // than length-based. Fish voices were 8 for 8 perfect. Warn before the
+    // user spends credits on a long narration.
+    const voiceUnreliableForLongForm = !!currentVoice && !isReliableForLongForm(currentVoice.id);
+
+    // Chunk for the SELECTED voice's engine — Gemini and Fish have very
+    // different safe ceilings, so the part count and ETA depend on the voice.
+    const plan = scriptText.trim() ? getChunkPlan(scriptText, currentVoice?.id) : null;
     const totalCredits = plan ? plan.totalCredits * CREDITS_CONFIG.COST_PER_CHARACTER : 0;
     const hasEnoughCredits = (profile?.remainingCredits || 0) >= totalCredits;
     const isGenerating = ['chunking', 'generating', 'stitching'].includes(progress.status);
@@ -414,6 +423,26 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                         </div>
                     )}
 
+                    {/* Unreliable-engine warning — measured, see isReliableForLongForm */}
+                    {voiceUnreliableForLongForm && !isGenerating && progress.status !== 'complete' && scriptText.trim() && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                            <div className="flex items-start gap-3">
+                                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
+                                <div>
+                                    <h3 className="font-semibold text-amber-900">
+                                        {currentVoice?.name} may drop parts of long scripts
+                                    </h3>
+                                    <p className="text-sm text-amber-800 mt-1">
+                                        In our testing this voice&apos;s engine sometimes returned only
+                                        part of a long script. We now detect and retry that, and you are
+                                        never charged for audio you don&apos;t receive — but for a long
+                                        narration a Fish Audio voice is the safer choice.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Generate Button */}
                     {!isGenerating && progress.status !== 'complete' && scriptText.trim() && (
                         <button
@@ -516,16 +545,34 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                     {progress.status === 'complete' && progress.finalAudioUrl && (
                         <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-5">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${progress.partial ? 'bg-amber-100' : 'bg-green-100'}`}>
+                                    {progress.partial
+                                        ? <AlertCircle className="w-5 h-5 text-amber-600" />
+                                        : <CheckCircle2 className="w-5 h-5 text-green-600" />}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-gray-900">Voiceover Ready!</h3>
+                                    <h3 className="font-bold text-gray-900">
+                                        {progress.partial ? 'Partial Voiceover Ready' : 'Voiceover Ready!'}
+                                    </h3>
                                     <p className="text-sm text-gray-500">
-                                        {progress.totalChunks} chunks stitched into one audio file
+                                        {progress.partial
+                                            ? `Parts 1–${progress.partial.chunkNumber - 1} of ${progress.partial.totalChunks} stitched into one audio file`
+                                            : `${progress.totalChunks} chunks stitched into one audio file`}
                                     </p>
                                 </div>
                             </div>
+                            {progress.partial && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                    <p className="text-sm text-amber-900 font-medium">
+                                        Generation stopped at part {progress.partial.chunkNumber} of {progress.partial.totalChunks}.
+                                    </p>
+                                    <p className="text-sm text-amber-800 mt-1">
+                                        The audio below covers your script up to that point and is yours to keep.
+                                        You were not charged for the parts that did not generate.
+                                        Reason: {progress.partial.message}
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Audio Player */}
                             <div className="bg-gray-50 rounded-xl p-4">

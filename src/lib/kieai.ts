@@ -6,6 +6,7 @@
 // ===========================================
 
 import { VOICES_DATA, GEMINI_VOICES } from './voices-data'
+import { ENGINE_LIMITS } from './constants'
 
 export const KIEAI_BASE_URL = 'https://api.kie.ai/api/v1'
 
@@ -190,8 +191,12 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         throw new Error('Missing KIEAI_API_KEY environment variable')
     }
 
-    const maxAttempts = 45 // 45 attempts * 2 seconds = 90 seconds max
-    const pollInterval = 2000 // 2 seconds
+    // 90s was too short: a 1,449-char request was measured taking 284s to
+    // return, so the app gave up on work the API had actually completed —
+    // the user saw a failure and the credits round-tripped through a refund.
+    // Stays inside the route's maxDuration of 300s.
+    const pollInterval = 2000
+    const maxAttempts = Math.floor(ENGINE_LIMITS.gemini.pollTimeoutMs / pollInterval)
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const response = await fetch(
@@ -235,7 +240,7 @@ async function pollTaskStatus(taskId: string): Promise<string> {
         await new Promise(resolve => setTimeout(resolve, pollInterval))
     }
 
-    throw new Error('TTS generation timed out after 90 seconds')
+    throw new Error(`TTS generation timed out after ${ENGINE_LIMITS.gemini.pollTimeoutMs / 1000} seconds`)
 }
 
 /**
