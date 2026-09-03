@@ -1,7 +1,7 @@
 // ===========================================
 // SCHEDULED: PURGE OLD GENERATED AUDIO
 // ===========================================
-// Deletes audio older than AUDIO_RETENTION_DAYS from the storage bucket.
+// Deletes audio older than AUDIO_RETENTION_DAYS (default 30) from the bucket.
 //
 // Storing uncompressed WAV with no retention put 75 GB into Supabase and blew
 // the storage and egress quotas. Audio is now MP3 (~5x smaller) and this keeps
@@ -28,7 +28,9 @@ const MAX_DELETES_PER_RUN = 5000;
 
 function retentionDays(): number {
     const raw = Number(process.env.AUDIO_RETENTION_DAYS);
-    return Number.isFinite(raw) && raw > 0 ? raw : 15;
+    // 30 days chosen over 15: it keeps users a full month of history and,
+    // now that audio is MP3, still settles at only a few GB.
+    return Number.isFinite(raw) && raw > 0 ? raw : 30;
 }
 
 export async function GET(request: NextRequest) {

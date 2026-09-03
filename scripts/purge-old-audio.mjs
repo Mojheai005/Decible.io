@@ -7,8 +7,8 @@
  * of what is in the bucket is orphaned with no database row pointing at it.
  * That is why this walks the bucket by file age rather than joining to history.
  *
- *   node scripts/purge-old-audio.mjs --days=15 --dry-run
- *   node scripts/purge-old-audio.mjs --days=15
+ *   node scripts/purge-old-audio.mjs --days=30 --dry-run
+ *   node scripts/purge-old-audio.mjs --days=30
  *
  * Reads NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local.
  */
@@ -24,7 +24,7 @@ const args = Object.fromEntries(
         return [k, v ?? true]
     }),
 )
-const DAYS = Number(args.days ?? 15)
+const DAYS = Number(args.days ?? 30)
 const DRY = !!args['dry-run']
 
 const env = Object.fromEntries(
