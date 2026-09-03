@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTTS, TTS_OUTPUT_FORMAT } from '@/lib/kieai';
-import { generateFishTTS } from '@/lib/fishaudio';
+import { generateFishTTS, FISH_OUTPUT_FORMAT } from '@/lib/fishaudio';
 import { getVoiceById, getVoiceEngine } from '@/lib/voices-data';
 import { CREDITS_CONFIG, ENGINE_LIMITS, MAX_PLAUSIBLE_CHARS_PER_SECOND, TTS_MAX_ATTEMPTS } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
@@ -160,6 +160,9 @@ function wavDurationSeconds(buffer: ArrayBuffer): number | null {
  * Returns null when the audio looks complete.
  */
 function detectTruncation(audio: ArrayBuffer, charCount: number, speed = 1.0): string | null {
+    // Only parses WAV. MP3 (Fish) returns null and is never flagged — which is
+    // correct: Fish measured 8/8 voices at 100% coverage and has never been
+    // observed truncating. The detector exists for Gemini, which does.
     const seconds = wavDurationSeconds(audio);
     if (seconds === null || seconds <= 0) return null; // unparseable — do not block
     const rate = charCount / seconds;
@@ -175,16 +178,21 @@ function detectTruncation(audio: ArrayBuffer, charCount: number, speed = 1.0): s
 }
 
 // Store audio in Supabase Storage and return public URL
-async function storeAudioInBucket(userId: string, generationId: string, audioBuffer: ArrayBuffer): Promise<string | null> {
+async function storeAudioInBucket(
+    userId: string,
+    generationId: string,
+    audioBuffer: ArrayBuffer,
+    format: { extension: string; mimeType: string },
+): Promise<string | null> {
     try {
         const admin = getAdminClient();
-        const filePath = `${userId}/${generationId}.${TTS_OUTPUT_FORMAT.extension}`;
+        const filePath = `${userId}/${generationId}.${format.extension}`;
 
         // Upload to Supabase Storage bucket "audio-generations"
         const { error: uploadError } = await admin.storage
             .from('audio-generations')
             .upload(filePath, audioBuffer, {
-                contentType: TTS_OUTPUT_FORMAT.mimeType,
+                contentType: format.mimeType,
                 upsert: true,
             });
 
@@ -421,8 +429,13 @@ export async function POST(request: NextRequest) {
             }, { status: 502 });
         }
 
-        // 11. Store audio in Supabase Storage — if this fails, REFUND credits
-        const storedAudioUrl = await storeAudioInBucket(userId, generationId, audioBuffer);
+        // 11. Store audio in Supabase Storage — if this fails, REFUND credits.
+        // Fish returns MP3, Kie/Gemini returns WAV; storing one under the
+        // other's extension makes the file unplayable in the browser.
+        const outputFormat = engine === 'fish' ? FISH_OUTPUT_FORMAT : TTS_OUTPUT_FORMAT;
+        const storedAudioUrl = await storeAudioInBucket(
+            userId, generationId, audioBuffer, outputFormat,
+        );
 
         if (!storedAudioUrl) {
             await refundCredits(userId, creditsNeeded, generationId, 'Audio storage failed');

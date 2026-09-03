@@ -164,7 +164,8 @@ export async function POST(request: NextRequest) {
 
         const buffers = await Promise.all(bufferPromises);
 
-        // 4. Concatenate — WAV (current Gemini TTS output) or legacy MP3
+        // 4. Concatenate. Format is sniffed from the first chunk:
+        //    MP3 = Fish Audio (the default engine), WAV = Kie/Gemini.
         let concatenated: Buffer;
         let extension: string;
         let contentType: string;

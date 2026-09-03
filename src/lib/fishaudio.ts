@@ -1,15 +1,33 @@
 // ===========================================
 // FISH AUDIO TTS API CLIENT
 // S2.1 Pro via api.fish.audio — synchronous streaming API
-// (free tier model `s2.1-pro-free` until Aug 31; switch to
-// `s2.1-pro` via FISH_TTS_MODEL env var when the promo ends)
-// Output format: WAV — matches the Gemini pipeline
+//
+// Output format: MP3 @ 128 kbps.
+// Measured 2026-09-03 on a 53-second generation:
+//     WAV 44.1kHz   4,570 KB   (705 kbps)
+//     MP3 128 kbps    847 KB   5.4x smaller
+//     MP3 64 kbps     417 KB   11x smaller
+// Storing WAV put 75 GB into Supabase and blew through both the storage and
+// egress quotas. 128 kbps is transparent for speech and cuts storage AND
+// egress by ~81%; 64 kbps saves more but is audibly thinner on headphones,
+// and the audio IS the product here.
 // ===========================================
 
 export const FISH_BASE_URL = 'https://api.fish.audio'
 
 // Overridable so the paid model can be enabled without a code change
-export const FISH_TTS_MODEL = process.env.FISH_TTS_MODEL || 's2.1-pro-free'
+// `s2.1-pro-free` was a promo alias and must not be relied on — default to
+// the real paid model and let the env var override if Fish renames it.
+export const FISH_TTS_MODEL = process.env.FISH_TTS_MODEL || 's2.1-pro'
+
+// Fish returns MP3; Kie/Gemini returns WAV. The storage layer needs the right
+// extension and content type per engine or the browser refuses to play it.
+export const FISH_OUTPUT_FORMAT = {
+    extension: 'mp3',
+    mimeType: 'audio/mpeg',
+} as const
+
+const FISH_MP3_BITRATE = 128
 
 export interface FishTTSParams {
     text: string
@@ -43,8 +61,8 @@ export async function generateFishTTS(params: FishTTSParams): Promise<ArrayBuffe
         body: JSON.stringify({
             text: params.text,
             reference_id: params.referenceId,
-            format: 'wav',
-            sample_rate: 44100,
+            format: 'mp3',
+            mp3_bitrate: FISH_MP3_BITRATE,
             latency: 'normal',
             prosody: { speed, volume: 0 },
         }),
@@ -58,7 +76,9 @@ export async function generateFishTTS(params: FishTTSParams): Promise<ArrayBuffe
 
     const audioBuffer = await response.arrayBuffer()
 
-    if (!audioBuffer || audioBuffer.byteLength < 1000) {
+    // MP3 is far denser than WAV, so the old 1000-byte floor would have let a
+    // near-empty clip through. A real generation is comfortably above this.
+    if (!audioBuffer || audioBuffer.byteLength < 500) {
         throw new Error('Fish Audio returned empty or invalid audio')
     }
 
