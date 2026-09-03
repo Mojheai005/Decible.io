@@ -44,3 +44,7 @@ api.txt
 *.tsbuildinfo
 next-env.d.ts
 __pycache__/
+
+# Customer email batch loaders — real addresses, operational only.
+# Run by hand in the Supabase SQL editor; never part of the app.
+step*-load-grants*.sql

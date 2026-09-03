@@ -1,0 +1,18 @@
+# Nothing here is needed to RUN the site. Keeping it out of the deployment
+# bundle keeps uploads small and, more importantly, keeps customer data out
+# of the build entirely.
+
+# Customer email lists — 800+ real addresses across these batch loaders.
+# They are operational SQL, run by hand in Supabase, never by the app.
+step*-load-grants*.sql
+
+# Audit evidence and one-off tooling — useful in the repo, dead weight in prod.
+docs/
+scripts/
+*.png
+.playwright-mcp/
+.claude/
+
+# Local scratch
+__pycache__/
+*.pyc
