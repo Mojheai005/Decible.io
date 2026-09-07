@@ -118,6 +118,13 @@ export const ENGINE_LIMITS = {
         maxCharsPerRequest: 4000,   // proven good at 4,888
         pollTimeoutMs: 300_000,
     },
+    smallest: {
+        // Smallest.ai Lightning v3.1 Pro. Docs say "~250 chars recommended";
+        // transcription testing on 2026-09-07 showed 100% coverage at every
+        // size up to 4,707 chars, so that is guidance rather than a limit.
+        maxCharsPerRequest: 4000,
+        pollTimeoutMs: 300_000,
+    },
 } as const
 
 export type TTSEngine = keyof typeof ENGINE_LIMITS

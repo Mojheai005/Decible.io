@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTTS, TTS_OUTPUT_FORMAT } from '@/lib/kieai';
 import { generateFishTTS, FISH_OUTPUT_FORMAT } from '@/lib/fishaudio';
+import { generateSmallestTTS, SMALLEST_OUTPUT_FORMAT } from '@/lib/smallest';
 import { getVoiceById, getVoiceEngine } from '@/lib/voices-data';
 import { CREDITS_CONFIG, ENGINE_LIMITS, MAX_PLAUSIBLE_CHARS_PER_SECOND, TTS_MAX_ATTEMPTS } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
@@ -361,6 +362,14 @@ export async function POST(request: NextRequest) {
         // and billed in full. Now every result is measured, and a truncated
         // one is thrown away and re-requested rather than sold to the user.
         const runEngine = async (): Promise<ArrayBuffer> => {
+            if (voiceData?.engine === 'smallest' && voiceData.smallestVoiceId) {
+                // Smallest.ai Lightning v3.1 Pro (synchronous REST, native MP3)
+                return generateSmallestTTS({
+                    text,
+                    voiceId: voiceData.smallestVoiceId,
+                    speed: Math.round((voice_settings?.speed ?? 1.0) * 100) / 100,
+                });
+            }
             if (voiceData?.engine === 'fish' && voiceData.fishReferenceId) {
                 // Fish Audio S2.1 Pro (synchronous streaming API)
                 return generateFishTTS({
@@ -432,7 +441,10 @@ export async function POST(request: NextRequest) {
         // 11. Store audio in Supabase Storage — if this fails, REFUND credits.
         // Fish returns MP3, Kie/Gemini returns WAV; storing one under the
         // other's extension makes the file unplayable in the browser.
-        const outputFormat = engine === 'fish' ? FISH_OUTPUT_FORMAT : TTS_OUTPUT_FORMAT;
+        const outputFormat =
+            engine === 'smallest' ? SMALLEST_OUTPUT_FORMAT
+            : engine === 'fish'   ? FISH_OUTPUT_FORMAT
+            : TTS_OUTPUT_FORMAT;
         const storedAudioUrl = await storeAudioInBucket(
             userId, generationId, audioBuffer, outputFormat,
         );
