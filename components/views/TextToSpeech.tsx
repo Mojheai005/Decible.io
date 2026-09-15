@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { getMaxCharsForVoice, getVoiceEngine } from '@/lib/voices-data';
 import { Play, Download, ChevronRight, Loader2, RotateCcw, Share2, Pause, Globe, Trash2, Volume2, RotateCw, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import { Slider } from '../ui/Slider';
 import { Toggle } from '../ui/Toggle';
@@ -419,6 +420,15 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
 
     // Calculate credits display
     const creditsRemaining = profile?.remainingCredits ?? 50000;
+
+    // Per-request character ceiling for the SELECTED voice's engine. This is a
+    // WALL-TIME limit, not a quality one: a request that outruns the serverless
+    // function is killed after credits are deducted but before the refund can
+    // run, so the user pays and receives nothing. Blocking oversize input here
+    // is what stops that happening. The server enforces the same limit (413).
+    const maxChars = currentVoice?.id ? getMaxCharsForVoice(currentVoice.id) : 1000;
+    const voiceEngine = currentVoice?.id ? getVoiceEngine(currentVoice.id) : 'gemini';
+    const overLimit = text.length > maxChars;
     const formattedCredits = creditsRemaining.toLocaleString();
 
     // Settings Panel Content - rendered as function call (NOT <Component />) to avoid remount on parent re-render
@@ -653,9 +663,25 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                                     className={`w-full flex-1 leading-relaxed resize-none focus:outline-none font-light placeholder:text-gray-300 bg-transparent text-gray-900 selection:bg-gray-100 ${isMobile ? 'text-lg' : 'text-2xl'}`}
                                     placeholder="Start typing here or paste any text..."
                                     value={text}
-                                    onChange={(e) => setText(e.target.value)}
+                                    onChange={(e) => setText(e.target.value.slice(0, maxChars))}
+                                    maxLength={maxChars}
                                     spellCheck={false}
                                 />
+                                {text.length >= maxChars && (
+                                    <p className="mt-2 text-xs text-amber-700">
+                                        {maxChars.toLocaleString()} characters is the most{' '}
+                                        {currentVoice?.name || 'this voice'} can do in one go.
+                                        For a longer script use{' '}
+                                        <button
+                                            type="button"
+                                            onClick={() => onNavigate?.('script-to-voice')}
+                                            className="underline font-medium hover:text-amber-900"
+                                        >
+                                            Script to Voice
+                                        </button>
+                                        {' '}— it splits it up and stitches the audio back together.
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -676,7 +702,7 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                             {/* Generate Button */}
                             <button
                                 onClick={handleGenerate}
-                                disabled={!text.trim() || isGenerating}
+                                disabled={!text.trim() || isGenerating || overLimit}
                                 className={`flex items-center justify-center rounded-full font-bold transition-all duration-300 ${isMobile ? 'px-6 py-3 text-sm' : 'px-8 py-2.5 text-sm'} ${!text.trim()
                                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                     : 'bg-black text-white hover:bg-gray-800 shadow-md active:scale-95'
@@ -693,8 +719,17 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                             </button>
 
                             {/* Char Count */}
-                            <div className={`flex items-center gap-1 text-xs font-bold text-gray-400 bg-gray-50 rounded-full ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'}`}>
-                                {text.length.toLocaleString()} / 5,000
+                            <div
+                                title={`${currentVoice?.name || 'This voice'} runs on ${voiceEngine} and handles up to ${maxChars.toLocaleString()} characters per generation. Longer scripts: use Script to Voice, which splits them automatically.`}
+                                className={`flex items-center gap-1 text-xs font-bold rounded-full ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'} ${
+                                    text.length >= maxChars
+                                        ? 'text-amber-700 bg-amber-50'
+                                        : text.length > maxChars * 0.9
+                                            ? 'text-amber-600 bg-amber-50/60'
+                                            : 'text-gray-400 bg-gray-50'
+                                }`}
+                            >
+                                {text.length.toLocaleString()} / {maxChars.toLocaleString()}
                             </div>
                         </div>
                     </div>
