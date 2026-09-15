@@ -117,7 +117,21 @@ export const GENERATION_LIMITS = {
 // Pro. Raise them only with fresh timing measurements taken under load.
 export const ENGINE_LIMITS = {
     gemini: {
-        maxCharsPerRequest: 1000,   // proven good at 1,159; breaks by 1,449
+        // 1,000 was set against TRUNCATION and never against the clock, which
+        // was an oversight: Gemini's own healthy benchmark is 16.8 chars/sec,
+        // so the 1,159-char run that "passed" actually took ~69s — already past
+        // a 60s function limit. At 1,000 chars it lands at ~60s, i.e. exactly on
+        // the kill line, and a killed function never reaches the refund, so the
+        // user is charged and gets nothing.
+        //
+        // Worse, Gemini does not merely run slow, it runs away: 1,449 chars
+        // once produced 566s of audio in 284s of wall time. No ceiling makes it
+        // safe at length. 400 chars projects to ~24s measured and ~60s even at
+        // the 2.5x slowdown the other engines are sized for.
+        //
+        // This is a containment limit for an engine that should be demoted, not
+        // a considered capacity. Gemini is 30 of 359 voices.
+        maxCharsPerRequest: 400,
         pollTimeoutMs: 180_000,
     },
     fish: {
@@ -157,6 +171,43 @@ export const DEFAULT_MAX_CHARS_PER_REQUEST = ENGINE_LIMITS.gemini.maxCharsPerReq
 // reliable — the output must be checked and RETRIED. Three attempts takes a
 // ~20% per-request failure rate to well under 1%.
 export const TTS_MAX_ATTEMPTS = 3
+
+// Measured throughput per engine, ms of wall time per character of script.
+// Fish and Smallest measured 2026-09-16; Gemini derived from its healthy
+// 16.8 chars/sec run. Used to answer "is there time left for another attempt?"
+// before retrying, so a retry never pushes the function past its limit.
+export const ENGINE_MS_PER_CHAR = {
+    gemini: 60,
+    fish: 15.4,
+    smallest: 9.7,
+} as const
+
+// Wall-clock budget for one TTS request. Vercel Hobby kills a function at 60s
+// regardless of `maxDuration`, and a killed function never reaches the refund —
+// that is exactly how 10 users were charged and given nothing. 55s leaves room
+// to upload the audio and answer. Retrying is only allowed while the estimated
+// next attempt still fits inside what remains.
+export const FUNCTION_BUDGET_MS = 55_000
+
+// Backoff for CAPACITY errors — a provider concurrency cap, not a blip.
+//
+// VERIFIED 2026-09-16 against the live Fish API: 8 simultaneous requests
+// returned 5 x HTTP 200 and 3 x HTTP 429 "exceeded your current concurrency
+// limit", each rejection arriving in under 300ms. Fish allows 5 in flight.
+//
+// A slot frees only when one of those 5 finishes, which at the 1,500-char
+// ceiling takes ~23s — so the expected wait is ~23/5 ≈ 4.6s. The original
+// 800ms/1600ms backoff retried while all five slots were still busy and was
+// therefore guaranteed to fail. These delays are sized to the real turnover.
+export const CAPACITY_RETRY_DELAYS_MS = [4_000, 9_000] as const
+
+// Backoff for ordinary transient faults (5xx, socket hang up, timeout), where
+// nothing needs to free up and retrying quickly is right.
+export const TRANSIENT_RETRY_DELAYS_MS = [800, 1_600] as const
+
+// Jitter spreads simultaneous retries so five users who are all throttled at
+// the same instant do not queue up and collide again on the same schedule.
+export const RETRY_JITTER_RATIO = 0.3
 
 // Truncation detector threshold, in characters of script per second of audio.
 //

@@ -3,7 +3,17 @@ import { generateTTS, TTS_OUTPUT_FORMAT } from '@/lib/kieai';
 import { generateFishTTS, FISH_OUTPUT_FORMAT } from '@/lib/fishaudio';
 import { generateSmallestTTS, SMALLEST_OUTPUT_FORMAT } from '@/lib/smallest';
 import { getVoiceById, getVoiceEngine } from '@/lib/voices-data';
-import { CREDITS_CONFIG, ENGINE_LIMITS, MAX_PLAUSIBLE_CHARS_PER_SECOND, TTS_MAX_ATTEMPTS } from '@/lib/constants';
+import {
+    CREDITS_CONFIG,
+    ENGINE_LIMITS,
+    ENGINE_MS_PER_CHAR,
+    FUNCTION_BUDGET_MS,
+    CAPACITY_RETRY_DELAYS_MS,
+    TRANSIENT_RETRY_DELAYS_MS,
+    RETRY_JITTER_RATIO,
+    MAX_PLAUSIBLE_CHARS_PER_SECOND,
+    TTS_MAX_ATTEMPTS,
+} from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib/rate-limiter';
@@ -265,6 +275,38 @@ function isTransientEngineError(message: string): boolean {
 }
 
 /**
+ * Is this specifically a provider CAPACITY error — all concurrency slots busy?
+ *
+ * VERIFIED 2026-09-16 against the live Fish API: 8 simultaneous requests gave
+ * 5 x HTTP 200 and 3 x HTTP 429 "exceeded your current concurrency limit",
+ * every rejection returning in under 300ms. Fish permits 5 in flight.
+ *
+ * This matters because capacity errors need a different wait from other
+ * transient faults. A 5xx clears on its own in milliseconds; a busy slot only
+ * frees when another request finishes, which takes seconds. Retrying a
+ * capacity error too soon is not a retry at all — it is a second failure.
+ */
+function isCapacityError(message: string): boolean {
+    const m = message.toLowerCase();
+    return /http 429|concurrency limit|too many requests|rate.?limit/.test(m);
+}
+
+/** Spread simultaneous retries so throttled callers do not collide again. */
+function withJitter(ms: number): number {
+    const spread = ms * RETRY_JITTER_RATIO;
+    return Math.max(0, Math.round(ms - spread + Math.random() * spread * 2));
+}
+
+/** Rough wall time one attempt needs, used to decide if a retry still fits. */
+function estimateAttemptMs(engine: string, characters: number): number {
+    const rate = ENGINE_MS_PER_CHAR[engine as keyof typeof ENGINE_MS_PER_CHAR]
+        ?? ENGINE_MS_PER_CHAR.gemini;
+    // 2x the measured rate: providers demonstrably run slower under load
+    // (Smallest measured 2.2x slower on 7 Sep than on 16 Sep for identical work).
+    return characters * rate * 2;
+}
+
+/**
  * Record a failed generation so the cause is answerable later.
  *
  * Previously only successes were written to generation_history, so a failure
@@ -390,6 +432,7 @@ export async function POST(request: NextRequest) {
         const voiceNameForApi = voiceData?.voiceName || voice_name || voice_id;
 
         // 8. Generate unique ID for this generation
+        const requestStartedAt = Date.now();
         const generationId = `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
         // 9. PRE-DEDUCT credits atomically (row-locked, prevents race conditions)
@@ -459,12 +502,32 @@ export async function POST(request: NextRequest) {
                 // Transient fault (throttle, 5xx, timeout) — back off and retry
                 // rather than handing the user a failure.
                 if (isTransientEngineError(engineMessage) && attempt < TTS_MAX_ATTEMPTS) {
-                    const backoffMs = 800 * attempt;
-                    console.warn(`[TTS] transient engine error, retrying in ${backoffMs}ms `
-                        + `(attempt ${attempt}/${TTS_MAX_ATTEMPTS})`,
-                        { generationId, voice_id, engine, engineMessage });
-                    await new Promise(resolve => setTimeout(resolve, backoffMs));
-                    continue;
+                    const capacity = isCapacityError(engineMessage);
+                    const schedule = capacity
+                        ? CAPACITY_RETRY_DELAYS_MS
+                        : TRANSIENT_RETRY_DELAYS_MS;
+                    const backoffMs = withJitter(
+                        schedule[Math.min(attempt - 1, schedule.length - 1)],
+                    );
+
+                    // Only retry if the wait AND the next attempt both still fit
+                    // inside the function's life. Running out of time mid-attempt
+                    // means the process is killed before the refund executes, and
+                    // the user is charged for nothing — the failure mode that cost
+                    // 8 users 10,494 credits. Refunding early is strictly better.
+                    const elapsed = Date.now() - requestStartedAt;
+                    const needed = backoffMs + estimateAttemptMs(engine, charactersUsed);
+                    if (elapsed + needed > FUNCTION_BUDGET_MS) {
+                        console.warn('[TTS] out of time budget, refunding instead of retrying', {
+                            generationId, voice_id, engine, elapsed, needed, capacity,
+                        });
+                    } else {
+                        console.warn(`[TTS] ${capacity ? 'capacity' : 'transient'} engine error, `
+                            + `retrying in ${backoffMs}ms (attempt ${attempt}/${TTS_MAX_ATTEMPTS})`,
+                            { generationId, voice_id, engine, engineMessage });
+                        await new Promise(resolve => setTimeout(resolve, backoffMs));
+                        continue;
+                    }
                 }
 
                 // Permanent, or out of attempts. Record WHY before refunding —
@@ -575,22 +638,49 @@ export async function POST(request: NextRequest) {
 
         // Handle specific error types
         if (error instanceof Error) {
-            if (error.message.includes('Rate limit')) {
+            // Provider is at capacity — every concurrency slot is busy. Fish
+            // allows 5 in flight (verified 2026-09-16), so at peak this is
+            // simply queueing, not a fault. Nothing was charged; say so, and
+            // answer 503 rather than 500 so it is not logged as a server bug.
+            if (isCapacityError(error.message)) {
+                return NextResponse.json(
+                    {
+                        error: 'Voice engine busy',
+                        message: 'All voice slots are in use right now, so nothing '
+                            + 'was charged. Please try again in a few seconds.',
+                    },
+                    { status: 503 }
+                );
+            }
+            if (/rate limit/i.test(error.message)) {
                 return NextResponse.json(
                     { error: 'Rate limit exceeded', message: error.message },
                     { status: 429 }
                 );
             }
-            if (error.message.includes('KIEAI_API_KEY') || error.message.includes('FISH_AUDIO_API_KEY')) {
+            // A missing key is our misconfiguration, never the user's problem.
+            // SMALLEST_API_KEY was absent from this list, so for nine days the
+            // raw text "Missing SMALLEST_API_KEY environment variable" was
+            // returned straight to the browser on every Smallest voice.
+            if (/KIEAI_API_KEY|FISH_AUDIO_API_KEY|SMALLEST_API_KEY|not configured/.test(error.message)) {
                 return NextResponse.json(
-                    { error: 'API configuration error', message: 'TTS service not configured' },
-                    { status: 500 }
+                    {
+                        error: 'Voice unavailable',
+                        message: 'This voice is temporarily unavailable and nothing '
+                            + 'was charged. Please pick another voice — we are on it.',
+                    },
+                    { status: 503 }
                 );
             }
         }
 
+        // Never hand a raw provider/internal string to the browser.
         return NextResponse.json(
-            { error: 'Generation failed', message: errorMessage },
+            {
+                error: 'Generation failed',
+                message: 'The voice engine could not complete this generation, so '
+                    + 'nothing was charged. Please try again.',
+            },
             { status: 500 }
         );
     }
