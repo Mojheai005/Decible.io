@@ -108,21 +108,39 @@ export const GENERATION_LIMITS = {
 // FISH (api.fish.audio, s2.1-pro) — RELIABLE
 //   4,888 chars -> 8 of 8 voices spoke 32/32 checkpoints, 100% coverage.
 //
-// Chunk sizes below sit under the proven-good ceiling for each engine.
+// CEILINGS ARE SET BY WALL TIME, NOT QUALITY. Both Fish and Smallest can
+// speak far more text than these limits allow; what they cannot do is finish
+// before a serverless function is killed. A killed function deducts credits
+// and never reaches the refund, so the user pays and receives nothing —
+// measured on 12 Sep. Sizes below finish inside 60s even when a provider runs
+// ~2.5x slower than its measured rate, so they hold on Vercel Hobby as well as
+// Pro. Raise them only with fresh timing measurements taken under load.
 export const ENGINE_LIMITS = {
     gemini: {
         maxCharsPerRequest: 1000,   // proven good at 1,159; breaks by 1,449
         pollTimeoutMs: 180_000,
     },
     fish: {
-        maxCharsPerRequest: 4000,   // proven good at 4,888
+        // Quality ceiling is 4,888 (transcription-verified), but the binding
+        // constraint is WALL TIME, not truncation. Measured 2026-09-16:
+        // 15.4 ms/char, so 4,000 chars = ~62s — past a 60s function limit
+        // before any provider slowdown. Two charges on 12 Sep averaging 3,940
+        // chars were deducted and never delivered: the function died mid-flight
+        // so the refund never ran and the users silently lost the credits.
+        // 1,500 completes in ~23s and still finishes inside 60s even if the
+        // provider runs 2.5x slower than measured.
+        maxCharsPerRequest: 1500,
         pollTimeoutMs: 300_000,
     },
     smallest: {
         // Smallest.ai Lightning v3.1 Pro. Docs say "~250 chars recommended";
         // transcription testing on 2026-09-07 showed 100% coverage at every
-        // size up to 4,707 chars, so that is guidance rather than a limit.
-        maxCharsPerRequest: 4000,
+        // size up to 4,707 chars, so quality is not the constraint — wall time
+        // is. Measured 9.7 ms/char on 2026-09-16, but the SAME work measured
+        // 2.2x slower on 2026-09-07 under load (4,707 chars took 99.6s).
+        // 2,500 still projects to ~61s at that slow rate — over the line — so
+        // 2,000: ~19s measured, ~49s at 2.5x slower, comfortably inside 60s.
+        maxCharsPerRequest: 2000,
         pollTimeoutMs: 300_000,
     },
 } as const
