@@ -226,6 +226,47 @@ export const RETRY_JITTER_RATIO = 0.3
 // a false negative charges a user for a script they did not receive.
 export const MAX_PLAUSIBLE_CHARS_PER_SECOND = 20
 
+// ===========================================
+// WHAT EACH ENGINE ACTUALLY COSTS
+// ===========================================
+// Published rates, converted to one comparable unit on 2026-09-16.
+//
+//   Fish s2.1-pro   $15.00 per million UTF-8 bytes   (docs.fish.audio)
+//   Smallest v3.1   $0.09 per minute of audio        (smallest.ai/pricing)
+//   Gemini/Kie.ai   prepaid credit, rate not published
+//
+// Smallest bills by TIME, so its per-character cost depends on speaking rate.
+// Measured from 40 of our own preview files with ffprobe: 92 characters of
+// script produces a median 6.24s of speech = 14.7 chars/sec. One minute is
+// therefore ~882 characters.
+//
+// PER 1,000 CHARACTERS:
+//     Fish      $0.0150
+//     Smallest  $0.1020      <- 6.8x Fish for the same script
+//
+// This matters because Smallest is 249 of 359 voices AND supplies the default
+// selection, so it is the path of least resistance for every user.
+//
+// AGAINST THE PRO PLAN (500,000 chars/month, Rs 3,998 ~ $45):
+//     all on Fish       $7.50 cost   -> ~$38 margin
+//     all on Smallest  $51.02 cost   -> NEGATIVE
+//
+// The 402 course-grant holders pay nothing at all, so every character they
+// generate is pure cost: ~$20.5k/month if they all used their full allowance
+// on Smallest, ~$2k/month at 10% utilisation.
+//
+// Also worth knowing: Fish concurrency is tiered by TOTAL PREPAID AMOUNT, not
+// by subscription — 5 concurrent under $100, 15 at $100, 50 at $1,000, and the
+// tier unlocks on prepayment rather than on spend. Prepaying $100 triples
+// throughput and the money is still yours to spend on generation.
+export const ENGINE_COST_PER_1K_CHARS = {
+    fish: 0.0150,
+    smallest: 0.1020,
+} as const
+
+// Measured, not assumed: 40 preview files via ffprobe, 2026-09-16.
+export const MEASURED_SPEECH_CHARS_PER_SECOND = 14.7
+
 // Credits
 export const CREDITS_CONFIG = {
     FREE_TIER_CREDITS: 5000,

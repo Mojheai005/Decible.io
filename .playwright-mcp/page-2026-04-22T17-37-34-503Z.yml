@@ -1,0 +1,60 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - navigation "primary navigation" [ref=e3]:
+      - link "Higgsfield AI – AI Video & Image Generation Platform" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e5]
+      - generic [ref=e8]:
+        - link "Explore" [ref=e9] [cursor=pointer]:
+          - /url: /
+        - button "Image" [ref=e11] [cursor=pointer]
+        - button "Video" [ref=e13] [cursor=pointer]
+        - button "Audio" [ref=e15] [cursor=pointer]
+        - link "Collab" [ref=e16] [cursor=pointer]:
+          - /url: /generate
+        - button "Edit" [ref=e18] [cursor=pointer]
+        - button "Character" [ref=e20] [cursor=pointer]
+        - link "Marketing Studio New" [ref=e21] [cursor=pointer]:
+          - /url: /marketing-studio/product
+          - text: Marketing Studio
+          - generic [ref=e22]: New
+        - link "Cinema Studio 3.5" [ref=e23] [cursor=pointer]:
+          - /url: /cinema-studio?autoSelectFolder=true
+          - text: Cinema Studio
+          - generic [ref=e24]: "3.5"
+        - link "Originals New" [ref=e25] [cursor=pointer]:
+          - /url: /original-series
+          - text: Originals
+          - generic [ref=e26]: New
+        - link "Apps" [ref=e27] [cursor=pointer]:
+          - /url: /apps
+        - link "Assist" [ref=e28] [cursor=pointer]:
+          - /url: /chat
+        - button "Community" [ref=e30] [cursor=pointer]
+      - generic [ref=e32]:
+        - img [ref=e36] [cursor=pointer]
+        - img [ref=e39]
+  - main [ref=e42]
+  - contentinfo [ref=e520]:
+    - navigation [ref=e521]:
+      - paragraph [ref=e522]:
+        - generic [ref=e523]: © 2026 Higgsfield AI™.
+        - text: All rights reserved.
+      - list [ref=e524]:
+        - listitem [ref=e525]:
+          - link "Press" [ref=e526] [cursor=pointer]:
+            - /url: mailto:press@higgsfield.ai
+        - listitem [ref=e527]:
+          - link "Creative Challenge" [ref=e528] [cursor=pointer]:
+            - /url: /creative-challenge
+        - listitem [ref=e529]:
+          - link "Privacy" [ref=e530] [cursor=pointer]:
+            - /url: /privacy-policy
+        - listitem [ref=e531]:
+          - link "Terms" [ref=e532] [cursor=pointer]:
+            - /url: /terms-of-use-agreement
+        - listitem [ref=e533]:
+          - link "Cookie Notice" [ref=e534] [cursor=pointer]:
+            - /url: /cookie-notice
+  - region "Notifications Alt+T"
+  - alert [ref=e535]

@@ -1,0 +1,8 @@
+[     107ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://higgsfield.ai/originals:0
+[     751ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://higgsfield.ai/originals?_rsc=m3666:0
+[     757ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://fnf.higgsfield.ai/user:0
+[     920ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://fnf.higgsfield.ai/user:0
+[     925ms] [WARNING] [ABTest] GrowthBook resolve: {featureKey: ww-basic-starter, featureSource: force, isFromGrowthBook: true, variantId: BASIC, variantExists: true} @ https://assets.higgsfield.ai/main/_next/static/chunks/sentry-00a4d1c0abbb7538.js?dpl=dpl-moaaqs26:15
+[     926ms] [WARNING] [ABTest] GrowthBook resolve: {featureKey: upgrade-flow-ab-test, featureSource: experiment, isFromGrowthBook: true, variantId: new_flow, variantExists: true} @ https://assets.higgsfield.ai/main/_next/static/chunks/sentry-00a4d1c0abbb7538.js?dpl=dpl-moaaqs26:15
+[    1603ms] [WARNING] [GSI_LOGGER]: Your client application uses one of the Google One Tap prompt UI status methods that may stop functioning when FedCM becomes mandatory. Refer to the migration guide to update your code accordingly and opt-in to FedCM to test your changes. Learn more: https://developers.google.com/identity/gsi/web/guides/fedcm-migration?s=dc#display_moment and https://developers.google.com/identity/gsi/web/guides/fedcm-migration?s=dc#skipped_moment @ https://assets.higgsfield.ai/main/_next/static/chunks/sentry-00a4d1c0abbb7538.js?dpl=dpl-moaaqs26:15
+[    1603ms] [ERROR] Not signed in with the identity provider. @ https://higgsfield.ai/originals:0

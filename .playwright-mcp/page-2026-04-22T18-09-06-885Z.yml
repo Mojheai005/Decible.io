@@ -1,0 +1,253 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e6]:
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - generic [ref=e10]:
+            - button "Marketing Studio" [ref=e11] [cursor=pointer]:
+              - generic [ref=e12]:
+                - img [ref=e13]
+                - generic [ref=e16]:
+                  - text: Marketing
+                  - text: Studio
+              - img [ref=e19]
+            - button [ref=e21] [cursor=pointer]:
+              - img [ref=e22]
+          - generic [ref=e24]:
+            - button "New project" [ref=e25] [cursor=pointer]:
+              - img [ref=e27]
+              - generic [ref=e29]: New project
+            - generic [ref=e30]:
+              - img [ref=e31]
+              - textbox "Search" [ref=e34]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Tools
+          - button "Url to Ad" [ref=e38] [cursor=pointer]:
+            - figure [ref=e39]:
+              - img "Url to Ad" [ref=e40]
+            - generic [ref=e41]: Url to Ad
+        - button "Projects" [ref=e43] [cursor=pointer]:
+          - generic [ref=e44]: Projects
+          - img [ref=e46]
+      - generic [ref=e55]:
+        - generic [ref=e57]:
+          - link "Pricing 30% OFF" [ref=e58] [cursor=pointer]:
+            - /url: /pricing
+            - generic [ref=e59]:
+              - img [ref=e60]
+              - text: Pricing
+              - generic [ref=e62]: 30% OFF
+          - separator [ref=e63]
+          - generic [ref=e64]:
+            - link "Login" [ref=e65] [cursor=pointer]:
+              - /url: "#"
+            - link "Sign up" [ref=e66] [cursor=pointer]:
+              - /url: "#"
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - generic [ref=e69]:
+              - paragraph [ref=e70]: Marketing Studio
+              - heading "Turn any product into a video ad" [level=2] [ref=e71]
+            - generic [ref=e73]:
+              - generic [ref=e76]:
+                - tab "Product" [selected] [ref=e77] [cursor=pointer]:
+                  - img [ref=e78]
+                  - generic [ref=e80]: Product
+                - tab "App" [ref=e82] [cursor=pointer]:
+                  - img [ref=e83]
+                  - generic [ref=e85]: App
+              - generic [ref=e87]:
+                - generic [ref=e93]:
+                  - generic [ref=e94]:
+                    - generic [ref=e95]:
+                      - button [ref=e97] [cursor=pointer]:
+                        - img [ref=e98]
+                      - generic [ref=e101]:
+                        - textbox [ref=e102]
+                        - generic: Describe what happens in the ad...
+                    - generic [ref=e103]:
+                      - button "UGC" [ref=e106] [cursor=pointer]:
+                        - img [ref=e107]
+                        - generic [ref=e109]: UGC
+                        - img [ref=e110]
+                      - button "9:16" [ref=e112] [cursor=pointer]:
+                        - img [ref=e113]
+                        - generic [ref=e115]: 9:16
+                      - combobox [ref=e116]
+                      - button "720p" [ref=e117] [cursor=pointer]:
+                        - img [ref=e118]
+                        - generic [ref=e120]: 720p
+                      - combobox [ref=e121]
+                      - button "8s" [ref=e122] [cursor=pointer]:
+                        - img [ref=e123]
+                        - generic [ref=e125]: 8s
+                  - generic [ref=e126]:
+                    - button "Product" [ref=e128] [cursor=pointer]:
+                      - button [ref=e131]:
+                        - img [ref=e132]
+                      - paragraph [ref=e134]: Product
+                    - button "Avatar" [ref=e135] [cursor=pointer]:
+                      - button [ref=e138]:
+                        - img [ref=e139]
+                      - paragraph [ref=e141]: Avatar
+                    - button "GENERATE" [ref=e142] [cursor=pointer]:
+                      - generic [ref=e148]:
+                        - generic [ref=e149]: GENERATE
+                        - img [ref=e151]
+                - generic:
+                  - generic:
+                    - generic: Video
+                    - paragraph: Describe the video you want to create...
+          - generic [ref=e155]:
+            - generic [ref=e157]:
+              - img [ref=e158]
+              - paragraph [ref=e160]: Generate across formats
+            - generic [ref=e161]:
+              - article [ref=e162]:
+                - paragraph [ref=e166]: Hyper Motion
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e167]:
+                - paragraph [ref=e171]: Unboxing
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e172]:
+                - paragraph [ref=e176]: Hyper Motion
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e177]:
+                - paragraph [ref=e181]: UGC
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e182]:
+                - paragraph [ref=e186]: UGC
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e187]:
+                - paragraph [ref=e191]: UGC Virtual Try On
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e192]:
+                - paragraph [ref=e196]: UGC
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e197]:
+                - paragraph [ref=e201]: UGC
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e202]:
+                - paragraph [ref=e206]: TV Spot
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e207]:
+                - paragraph [ref=e211]: Unboxing
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e212]:
+                - paragraph [ref=e216]: UGC Virtual Try On
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e217]:
+                - paragraph [ref=e221]: Tutorial
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e222]:
+                - paragraph [ref=e226]: UGC
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e227]:
+                - paragraph [ref=e231]: Unboxing
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e232]:
+                - paragraph [ref=e236]: UGC Virtual Try On
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e237]:
+                - paragraph [ref=e241]: Tutorial
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e242]:
+                - paragraph [ref=e246]: UGC Virtual Try On
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e247]:
+                - paragraph [ref=e251]: Hyper Motion
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e252]:
+                - paragraph [ref=e256]: UGC
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e257]:
+                - paragraph [ref=e261]: Pro Virtual Try On
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e262]:
+                - paragraph [ref=e266]: UGC Virtual Try On
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e267]:
+                - paragraph [ref=e271]: Unboxing
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e272]:
+                - paragraph [ref=e276]: Hyper Motion
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+              - article [ref=e277]:
+                - paragraph [ref=e281]: UGC Virtual Try On
+                - button "Unmute preview":
+                  - img
+                - generic:
+                  - button "Recreate"
+  - region "Notifications Alt+T"
+  - alert [ref=e4]
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"

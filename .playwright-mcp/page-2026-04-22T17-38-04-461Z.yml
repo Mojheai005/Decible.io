@@ -1,0 +1,243 @@
+- generic [active] [ref=e1]:
+  - banner
+  - banner [ref=e2]:
+    - navigation "primary navigation" [ref=e3]:
+      - link "Higgsfield AI – AI Video & Image Generation Platform" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e5]
+      - generic [ref=e8]:
+        - link "Explore" [ref=e9] [cursor=pointer]:
+          - /url: /
+        - button "Image" [ref=e11] [cursor=pointer]
+        - button "Video" [ref=e13] [cursor=pointer]
+        - button "Audio" [ref=e15] [cursor=pointer]
+        - link "Collab" [ref=e16] [cursor=pointer]:
+          - /url: /generate
+        - button "Edit" [ref=e18] [cursor=pointer]
+        - button "Character" [ref=e20] [cursor=pointer]
+        - link "Marketing Studio New" [ref=e21] [cursor=pointer]:
+          - /url: /marketing-studio/product
+          - text: Marketing Studio
+          - generic [ref=e22]: New
+        - link "Cinema Studio 3.5" [ref=e23] [cursor=pointer]:
+          - /url: /cinema-studio?autoSelectFolder=true
+          - text: Cinema Studio
+          - generic [ref=e24]: "3.5"
+        - link "Originals New" [ref=e25] [cursor=pointer]:
+          - /url: /original-series
+          - text: Originals
+          - generic [ref=e26]: New
+        - link "Apps" [ref=e27] [cursor=pointer]:
+          - /url: /apps
+        - link "Assist" [ref=e28] [cursor=pointer]:
+          - /url: /chat
+        - button "Community" [ref=e30] [cursor=pointer]
+      - generic [ref=e45]:
+        - link "Pricing 30% OFF" [ref=e46] [cursor=pointer]:
+          - /url: /pricing
+          - generic [ref=e47]:
+            - img [ref=e48]
+            - text: Pricing
+            - generic [ref=e50]: 30% OFF
+        - separator [ref=e51]
+        - generic [ref=e52]:
+          - link "Login" [ref=e53] [cursor=pointer]:
+            - /url: "#"
+          - link "Sign up" [ref=e54] [cursor=pointer]:
+            - /url: "#"
+  - main [ref=e42]:
+    - generic [ref=e43]:
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - button [ref=e60] [cursor=pointer]:
+              - img [ref=e61]
+            - button [ref=e67] [cursor=pointer]:
+              - img [ref=e70]
+            - button [ref=e86] [cursor=pointer]:
+              - img [ref=e87]
+          - button "Toggle sidebar" [ref=e91] [cursor=pointer]:
+            - img [ref=e92]
+        - generic [ref=e95]:
+          - generic [ref=e97]:
+            - button "Type All" [ref=e99] [cursor=pointer]:
+              - generic [ref=e100]: Type
+              - generic [ref=e101]: All
+              - img [ref=e102]
+            - generic [ref=e105]:
+              - slider [ref=e108]
+              - tablist [ref=e110]:
+                - tab [ref=e113] [cursor=pointer]:
+                  - img [ref=e114]
+                - tab [selected] [ref=e119] [cursor=pointer]:
+                  - img [ref=e120]
+          - generic [ref=e126]:
+            - paragraph [ref=e127]: Cinema Studio 3.5
+            - generic [ref=e128]:
+              - img
+              - img
+              - generic [ref=e129]:
+                - generic [ref=e130]: What would you shoot
+                - generic [ref=e132]: with infinite budget?
+          - generic:
+            - generic:
+              - button "AI Director":
+                - generic:
+                  - img
+                - generic: AI Director
+      - generic [ref=e135]:
+        - generic [ref=e138]:
+          - tab "Image" [ref=e139] [cursor=pointer]:
+            - img [ref=e140]
+            - text: Image
+          - tab "Video" [selected] [ref=e143] [cursor=pointer]:
+            - img [ref=e144]
+            - text: Video
+        - generic [ref=e150]:
+          - generic [ref=e152]:
+            - generic [ref=e155]:
+              - 'button "Your browser does not support the video. Genre: General" [ref=e156] [cursor=pointer]':
+                - generic [ref=e159]: Your browser does not support the video.
+                - generic [ref=e160]:
+                  - generic [ref=e161]: "Genre:"
+                  - generic "General" [ref=e162]
+              - 'button "Style: Auto" [ref=e163] [cursor=pointer]':
+                - img [ref=e165]
+                - generic [ref=e167]:
+                  - generic [ref=e168]: "Style:"
+                  - generic "Auto" [ref=e169]
+              - 'button "Camera: Auto" [ref=e170] [cursor=pointer]':
+                - img [ref=e172]
+                - generic [ref=e174]:
+                  - generic [ref=e175]: "Camera:"
+                  - generic "Auto" [ref=e176]
+            - generic [ref=e178]:
+              - img [ref=e179]
+              - generic [ref=e181]:
+                - generic [ref=e182]:
+                  - button [ref=e185] [cursor=pointer]:
+                    - img [ref=e187]
+                  - generic [ref=e190]:
+                    - textbox [ref=e191]
+                    - generic: Describe your scene - use @ to add characters & locations
+                - generic [ref=e192]:
+                  - button "Cinema Studio 3.5" [ref=e193] [cursor=pointer]:
+                    - img [ref=e194]
+                    - generic [ref=e196]: Cinema Studio 3.5
+                  - button "8s" [ref=e197] [cursor=pointer]:
+                    - img [ref=e198]
+                    - generic [ref=e201]: 8s
+                  - generic [ref=e203]:
+                    - button "1080p" [ref=e205] [cursor=pointer]:
+                      - generic [ref=e208]:
+                        - text: 1080p
+                        - img [ref=e210]
+                    - combobox [ref=e214]
+                  - button "Auto" [ref=e216] [cursor=pointer]:
+                    - img [ref=e217]
+                    - generic [ref=e219]: Auto
+                  - generic [ref=e221]:
+                    - button "Decrement" [disabled] [ref=e222]:
+                      - img [ref=e223]
+                    - generic [ref=e225]: 1/4
+                    - button "Increment" [ref=e226] [cursor=pointer]:
+                      - img [ref=e227]
+                  - button "Off" [ref=e230] [cursor=pointer]:
+                    - img [ref=e231]
+                    - text: "Off"
+                  - button [ref=e234] [cursor=pointer]:
+                    - img [ref=e235]
+              - button "GENERATE 96" [ref=e238] [cursor=pointer]:
+                - generic [ref=e240]:
+                  - text: GENERATE
+                  - generic [ref=e241]:
+                    - img [ref=e242]
+                    - generic [ref=e245]: "96"
+          - generic:
+            - generic:
+              - generic:
+                - button:
+                  - img
+                - button: Describe your scene - use @ to add characters & locations
+              - generic:
+                - button:
+                  - img
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - tab "Image" [selected]:
+                  - img
+                  - text: Image
+                - tab "Video":
+                  - img
+                  - text: Video
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - button:
+                            - img
+                          - generic:
+                            - generic:
+                              - textbox
+                              - generic: Describe what you want to create...
+                        - generic:
+                          - generic:
+                            - button "Nano Banana Pro":
+                              - img
+                              - generic: Nano Banana Pro
+                            - generic:
+                              - button "3:4":
+                                - img
+                                - generic: 3:4
+                            - generic:
+                              - button "1K":
+                                - img
+                                - generic: 1K
+                            - generic:
+                              - generic:
+                                - button [disabled]:
+                                  - img
+                                - generic: 1/4
+                                - button:
+                                  - img
+                    - generic:
+                      - generic:
+                        - button "Generate 2":
+                          - generic:
+                            - generic: Generate
+                            - generic:
+                              - img
+                              - generic: "2"
+                - generic:
+                  - generic:
+                    - generic:
+                      - button:
+                        - img
+                      - button:
+                        - textbox
+                        - generic: Enter a prompt...
+                    - generic:
+                      - button:
+                        - img
+  - region "Notifications Alt+T"
+  - alert [ref=e44]
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
+  - listbox "Typeahead menu"
