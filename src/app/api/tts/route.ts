@@ -291,6 +291,26 @@ function isCapacityError(message: string): boolean {
     return /http 429|concurrency limit|too many requests|rate.?limit/.test(m);
 }
 
+/**
+ * Has the provider account run out of money or quota?
+ *
+ * This is its own category because it is invisible by default and looks
+ * exactly like a generic failure. Smallest.ai's balance hit zero on
+ * 2026-09-07 — 249 preview-generation calls drained the entire 20-credit
+ * balance in two minutes — and stayed at zero until 15 Sep. For eight days
+ * every customer who picked one of the 249 Smallest voices was refused.
+ *
+ * A refused request costs nothing, so it never appears on a provider's spend
+ * dashboard. Eight days of "quiet" there is indistinguishable from nobody
+ * calling at all, which is exactly why this went unnoticed. Never retried —
+ * retrying does not add funds — but logged unmistakably so it is greppable
+ * the first time it happens rather than the eighth day.
+ */
+function isProviderFundingError(message: string): boolean {
+    const m = message.toLowerCase();
+    return /http 40[23]|insufficient|no credits|out of credits|quota exceeded|payment required|billing|top ?up|balance/.test(m);
+}
+
 /** Spread simultaneous retries so throttled callers do not collide again. */
 function withJitter(ms: number): number {
     const spread = ms * RETRY_JITTER_RATIO;
@@ -532,9 +552,19 @@ export async function POST(request: NextRequest) {
 
                 // Permanent, or out of attempts. Record WHY before refunding —
                 // a bare "TTS generation failed" is unattributable afterwards.
-                console.error('[TTS] engine failure', {
-                    generationId, userId, voice_id, engine, attempt, engineMessage,
-                });
+                if (isProviderFundingError(engineMessage)) {
+                    // Deliberately shouty and greppable: this is an account
+                    // problem, not a code problem, and nobody finds it in time
+                    // unless it names itself.
+                    console.error(`[TTS] PROVIDER OUT OF FUNDS — ${engine.toUpperCase()} `
+                        + `is refusing requests for billing reasons. Every voice on this `
+                        + `engine is down until the account is topped up.`,
+                        { generationId, userId, voice_id, engine, engineMessage });
+                } else {
+                    console.error('[TTS] engine failure', {
+                        generationId, userId, voice_id, engine, attempt, engineMessage,
+                    });
+                }
                 await recordFailedGeneration(
                     userId, generationId, text, voice_id,
                     voice_name || voiceNameForApi, engine, charactersUsed, engineMessage,
@@ -662,6 +692,19 @@ export async function POST(request: NextRequest) {
             // SMALLEST_API_KEY was absent from this list, so for nine days the
             // raw text "Missing SMALLEST_API_KEY environment variable" was
             // returned straight to the browser on every Smallest voice.
+            // An unfunded provider account is our problem, not the user's, and
+            // it takes down every voice on that engine at once.
+            if (isProviderFundingError(error.message)) {
+                return NextResponse.json(
+                    {
+                        error: 'Voice unavailable',
+                        message: 'These voices are temporarily unavailable and nothing '
+                            + 'was charged. Please pick a voice from another family — '
+                            + 'we have been alerted and are fixing it.',
+                    },
+                    { status: 503 }
+                );
+            }
             if (/KIEAI_API_KEY|FISH_AUDIO_API_KEY|SMALLEST_API_KEY|not configured/.test(error.message)) {
                 return NextResponse.json(
                     {
