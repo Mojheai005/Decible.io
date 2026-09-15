@@ -246,6 +246,61 @@ async function saveToHistory(
     }
 }
 
+/**
+ * Should this engine error be retried?
+ *
+ * Between 13-14 Sep 2026 roughly half of all generations failed and were
+ * refunded. Every one was recorded only as "TTS generation failed" with no
+ * retry, so a single throttle or blip from a provider became a customer-visible
+ * failure. Transient faults must be retried; permanent ones must not, because
+ * retrying a bad key or malformed request just burns time and money.
+ */
+function isTransientEngineError(message: string): boolean {
+    const m = message.toLowerCase();
+    // Never retry: the request or credentials are wrong and will stay wrong.
+    if (/http 40[0-4]|unauthorized|invalid token|missing .*api_key|not configured/.test(m)) {
+        return false;
+    }
+    return /http (408|409|425|429|5\d\d)|rate.?limit|too many requests|timed? ?out|timeout|econnreset|etimedout|socket hang up|network|fetch failed|temporarily/.test(m);
+}
+
+/**
+ * Record a failed generation so the cause is answerable later.
+ *
+ * Previously only successes were written to generation_history, so a failure
+ * left no voice, no engine and no error text — which is why 1,359 refunds
+ * could not be attributed to any provider after the fact.
+ */
+async function recordFailedGeneration(
+    userId: string,
+    generationId: string,
+    text: string,
+    voiceId: string,
+    voiceName: string,
+    engine: string,
+    charactersUsed: number,
+    reason: string,
+): Promise<void> {
+    try {
+        const admin = getAdminClient();
+        await admin.from('generation_history').insert({
+            user_id: userId,
+            text: text.substring(0, 500),
+            voice_id: voiceId,
+            voice_name: voiceName,
+            audio_url: '',
+            characters_used: charactersUsed,
+            credits_used: 0,                 // refunded, so nothing was charged
+            settings: { engine, generationId },
+            status: 'failed',
+            error_message: reason.substring(0, 500),
+        });
+    } catch (err) {
+        // Diagnostics must never break the user-facing path.
+        console.error('[TTS] could not record failed generation', { generationId, err });
+    }
+}
+
 export async function POST(request: NextRequest) {
     try {
         // 1. Authenticate user
@@ -399,8 +454,32 @@ export async function POST(request: NextRequest) {
             try {
                 candidate = await runEngine();
             } catch (genError) {
-                // Hard failure from the engine — refund and surface it.
-                await refundCredits(userId, creditsNeeded, generationId, 'TTS generation failed');
+                const engineMessage = genError instanceof Error ? genError.message : String(genError);
+
+                // Transient fault (throttle, 5xx, timeout) — back off and retry
+                // rather than handing the user a failure.
+                if (isTransientEngineError(engineMessage) && attempt < TTS_MAX_ATTEMPTS) {
+                    const backoffMs = 800 * attempt;
+                    console.warn(`[TTS] transient engine error, retrying in ${backoffMs}ms `
+                        + `(attempt ${attempt}/${TTS_MAX_ATTEMPTS})`,
+                        { generationId, voice_id, engine, engineMessage });
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                    continue;
+                }
+
+                // Permanent, or out of attempts. Record WHY before refunding —
+                // a bare "TTS generation failed" is unattributable afterwards.
+                console.error('[TTS] engine failure', {
+                    generationId, userId, voice_id, engine, attempt, engineMessage,
+                });
+                await recordFailedGeneration(
+                    userId, generationId, text, voice_id,
+                    voice_name || voiceNameForApi, engine, charactersUsed, engineMessage,
+                );
+                await refundCredits(
+                    userId, creditsNeeded, generationId,
+                    `${engine} error: ${engineMessage.substring(0, 140)}`,
+                );
                 throw genError;
             }
 
@@ -426,8 +505,13 @@ export async function POST(request: NextRequest) {
             console.error('[TTS] All attempts truncated', {
                 userId, generationId, voice_id, engine, charactersUsed, lastTruncation,
             });
+            await recordFailedGeneration(
+                userId, generationId, text, voice_id,
+                voice_name || voiceNameForApi, engine, charactersUsed,
+                `truncated after ${TTS_MAX_ATTEMPTS} attempts: ${lastTruncation}`,
+            );
             await refundCredits(userId, creditsNeeded, generationId,
-                `Truncated after ${TTS_MAX_ATTEMPTS} attempts: ${lastTruncation}`);
+                `${engine} truncated after ${TTS_MAX_ATTEMPTS} attempts: ${lastTruncation}`);
             return NextResponse.json({
                 error: 'Incomplete audio',
                 message: 'The voice engine kept returning only part of your script, '
@@ -450,6 +534,10 @@ export async function POST(request: NextRequest) {
         );
 
         if (!storedAudioUrl) {
+            await recordFailedGeneration(
+                userId, generationId, text, voice_id,
+                voice_name || voiceNameForApi, engine, charactersUsed, 'audio storage failed',
+            );
             await refundCredits(userId, creditsNeeded, generationId, 'Audio storage failed');
             return NextResponse.json(
                 { error: 'Failed to store generated audio' },
