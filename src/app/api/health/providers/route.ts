@@ -44,13 +44,27 @@ function checkAuth(request: NextRequest): NextResponse | null {
     return null;
 }
 
-/** Presence only — never the value. Length catches an empty or truncated var. */
+/**
+ * Presence only — never the value. Length catches an empty or truncated var.
+ *
+ * `fingerprint` is the first 8 hex characters of the key's SHA-256. It cannot
+ * be reversed, but two runtimes holding the SAME key produce the SAME
+ * fingerprint — which is the only safe way to answer "is production using the
+ * key I think it is?".
+ *
+ * That question matters: production generating successfully while its usage is
+ * absent from the provider dashboard you are watching is exactly what two
+ * different keys on two different accounts looks like.
+ */
 function keyState(name: string) {
     const v = process.env[name];
     return {
         env_var: name,
         present: typeof v === 'string' && v.length > 0,
         length: v?.length ?? 0,
+        fingerprint: v
+            ? crypto.createHash('sha256').update(v).digest('hex').slice(0, 8)
+            : null,
         // A value pasted with its quotes still attached is a real and very
         // confusing failure: it produces a 401 that looks like a dead key.
         looks_quoted: !!v && (/^["']/.test(v) || /["']$/.test(v)),
