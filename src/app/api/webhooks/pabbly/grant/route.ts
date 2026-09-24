@@ -25,7 +25,16 @@ import { validateEmail } from '@/lib/validation';
 import { getPlanById } from '@/lib/pricing';
 
 const DEFAULT_PLAN = 'pro';
-const DEFAULT_VALID_DAYS = 30;
+
+// How long the PLAN runs. This is NOT how long the credits last.
+//
+// Credits are permanent as of 24 Sep 2026. On day 31 the buyer moves to the
+// free plan and keeps every credit they have not spent — expire_credit_grants()
+// ends the subscription and never touches the balance, and
+// reset_monthly_credits() treats the monthly allowance as a floor rather than
+// a ceiling. Before that change, 88 people had 41,961,302 credits reclaimed
+// from them; the wording below exists so no buyer is ever told otherwise.
+const PLAN_DAYS = 30;
 
 // Domains that are almost certainly a mistyped provider. We do NOT rewrite the
 // address — on a paid purchase, guessing could send someone else's credits to
@@ -102,7 +111,7 @@ export async function POST(request: NextRequest) {
                 grant_tier: plan.id,
                 batch_key: `pabbly_${plan.id}`,
                 note: name ? `Course purchase — ${name}` : 'Course purchase',
-                valid_for_days: DEFAULT_VALID_DAYS,
+                valid_for_days: PLAN_DAYS,
                 source: 'pabbly',
                 source_order_id: orderId,
                 amount_paid_paise: amountPaid,
@@ -149,16 +158,22 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const expiresOn = new Date(Date.now() + DEFAULT_VALID_DAYS * 86_400_000)
+        const planEndsOn = new Date(Date.now() + PLAN_DAYS * 86_400_000)
             .toISOString().slice(0, 10);
+
+        const keepsCredits = `The ${plan.name} plan runs for ${PLAN_DAYS} days. `
+            + `Your credits do not expire — whatever you have not used stays in `
+            + `your account after that.`;
 
         const message = isReplay
             ? 'This order was already processed. Nothing changed.'
             : accountExists
                 ? `Your Decible account now has the ${plan.name} plan with `
-                  + `${plan.credits.toLocaleString('en-IN')} credits. Log in and start generating.`
+                  + `${plan.credits.toLocaleString('en-IN')} credits. ${keepsCredits} `
+                  + `Log in and start generating.`
                 : `Sign up at decible.io with ${email} and your ${plan.name} plan with `
-                  + `${plan.credits.toLocaleString('en-IN')} credits will be waiting.`;
+                  + `${plan.credits.toLocaleString('en-IN')} credits will be waiting. `
+                  + keepsCredits;
 
         return NextResponse.json({
             success: true,
@@ -168,10 +183,15 @@ export async function POST(request: NextRequest) {
             plan: plan.id,
             plan_name: plan.name,
             credits: plan.credits,
-            valid_days: DEFAULT_VALID_DAYS,
+            valid_days: PLAN_DAYS,
             account_exists: accountExists,
             applied_now: appliedNow,
-            expires_on: expiresOn,
+            // `expires_on` is kept under its old name so nothing already
+            // mapped in Pabbly breaks, but it has always meant the PLAN end
+            // date and now says so. Credits never expire.
+            expires_on: planEndsOn,
+            plan_ends_on: planEndsOn,
+            credits_expire: false,
             message,
             ...(LIKELY_TYPO_DOMAINS.test(email) && {
                 warning: 'This email domain looks mistyped. The grant is recorded, but '
