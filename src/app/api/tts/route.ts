@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { generateTTS, TTS_OUTPUT_FORMAT } from '@/lib/kieai';
 import { generateFishTTS, FISH_OUTPUT_FORMAT } from '@/lib/fishaudio';
 import { generateSmallestTTS, SMALLEST_OUTPUT_FORMAT } from '@/lib/smallest';
@@ -17,12 +17,41 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib/rate-limiter';
+import { logger } from '@/lib/logger';
+import { alertOps } from '@/lib/alerts';
+import { ClassifiedFailure, classifyEngineFailure, failureFor, shortReason } from '@/lib/tts-errors';
 
 // Extend Vercel serverless function timeout to the project's fluid-compute limit.
-// Must comfortably exceed worst-case Kie polling (90s) + audio download + storage
+// Must comfortably exceed worst-case Kie polling + audio download + storage
 // upload + refund, so a timeout can never kill the function between the credit
 // deduction and the refund.
 export const maxDuration = 300;
+
+// ===========================================
+// LOGGING CONTRACT
+// ===========================================
+// Every request ends in exactly one of these log events (JSON in production,
+// so Vercel's log search and any log drain can filter on `event`):
+//   tts.refused    refused before anything was charged (status + reason)
+//   tts.completed  audio delivered
+//   tts.failed     charged, failed, refunded (category + provider message)
+// with tts.engine_error / tts.retry_skipped / tts.truncated for each attempt,
+// and ops.alert when a whole engine is down (out of funds, bad key), when
+// storage fails, or when a refund cannot be paid.
+//
+// Failed generations are also written to generation_history (status
+// 'failed', details under settings.failure) and every refund names its cause
+// in credit_transactions, so the database answers "why did it fail" after
+// the logs have expired.
+// ===========================================
+
+const ENGINE_LABEL: Record<string, string> = {
+    smallest: 'Smallest.ai',
+    fish: 'Fish Audio',
+    gemini: 'Kie.ai (Gemini voices)',
+};
+
+type Profile = { credits_remaining: number; subscription_tier: string; credits_used_this_month: number };
 
 // Get authenticated user
 async function getAuthenticatedUser() {
@@ -32,20 +61,32 @@ async function getAuthenticatedUser() {
     return user;
 }
 
-// Get user profile with credits
-async function getUserProfile(userId: string): Promise<{ credits_remaining: number; subscription_tier: string; credits_used_this_month: number } | null> {
+/**
+ * Load the caller's profile. A database error is kept apart from "no row":
+ * both used to answer 404 "User profile not found", so a Supabase hiccup
+ * told users their account was missing.
+ */
+async function getUserProfile(userId: string): Promise<{ profile: Profile | null; dbError: string | null }> {
     const admin = getAdminClient();
     const { data, error } = await admin
         .from('user_profiles')
         .select('credits_remaining, subscription_tier, credits_used_this_month')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-    if (error) {
-        console.error('Error fetching user profile:', error);
-        return null;
-    }
-    return data as { credits_remaining: number; subscription_tier: string; credits_used_this_month: number };
+    if (error) return { profile: null, dbError: `${error.code ?? ''} ${error.message}`.trim() };
+    return { profile: (data as Profile | null) ?? null, dbError: null };
+}
+
+/** Answer a request we refuse before charging, and log why. */
+function refuse(
+    status: number,
+    body: Record<string, unknown> & { error: string; code: string; message: string },
+    context: Record<string, unknown>,
+    headers?: Record<string, string>,
+) {
+    logger.warn('Generation refused before charging', { event: 'tts.refused', status, reason: body.code, ...context });
+    return NextResponse.json(body, { status, headers });
 }
 
 // Pre-deduct credits atomically using stored procedure (row-level locking)
@@ -60,26 +101,27 @@ async function preDeductCredits(userId: string, amount: number, description: str
     });
 
     if (error) {
-        console.error('Credit deduction RPC error:', error);
-        return { success: false, error: error.message, newBalance: 0 };
+        return { success: false as const, rpcError: `${error.code ?? ''} ${error.message}`.trim(), insufficient: false, newBalance: 0 };
     }
 
     // use_credits returns TABLE (success, new_balance, error_message)
     const result = Array.isArray(data) ? data[0] : data;
     if (!result?.success) {
-        return { success: false, error: result?.error_message || 'Credit deduction failed', newBalance: result?.new_balance ?? 0 };
+        const msg = String(result?.error_message || 'Credit deduction failed');
+        return { success: false as const, rpcError: msg, insufficient: /insufficient/i.test(msg), newBalance: result?.new_balance ?? 0 };
     }
 
-    return { success: true, newBalance: result.new_balance };
+    return { success: true as const, newBalance: result.new_balance as number };
 }
 
 // Refund credits on generation failure using stored procedure.
 // Retries with backoff; if every attempt fails, a PENDING_REFUND marker row is
-// written to generation_history so support can find and resolve it (a silent
-// log line alone is not durable).
-async function refundCredits(userId: string, amount: number, referenceId: string, reason: string) {
+// written to generation_history and the team is alerted, because a silent log
+// line alone is not durable.
+async function refundCredits(userId: string, amount: number, referenceId: string, reason: string): Promise<boolean> {
     const admin = getAdminClient();
     const RETRY_DELAYS_MS = [0, 500, 2000];
+    let lastError = '';
 
     for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
         if (RETRY_DELAYS_MS[attempt] > 0) {
@@ -93,21 +135,17 @@ async function refundCredits(userId: string, amount: number, referenceId: string
                 p_description: `Refund: ${reason}`,
                 p_reference_id: referenceId,
             });
-
-            if (!error) {
-                console.log(`[Credits] Refunded ${amount} credits to ${userId} — ${reason} (attempt ${attempt + 1})`);
-                return true;
-            }
-            console.error(`Credit refund attempt ${attempt + 1} failed`, { userId, amount, referenceId, error });
+            if (!error) return true;
+            lastError = `${error.code ?? ''} ${error.message}`.trim();
         } catch (err) {
-            console.error(`Credit refund attempt ${attempt + 1} exception`, { userId, amount, referenceId, err });
+            lastError = err instanceof Error ? err.message : String(err);
         }
     }
 
-    console.error('CRITICAL: Credit refund failed after all retries', { userId, amount, referenceId, reason });
+    logger.error('Refund failed after all retries', undefined, {
+        event: 'tts.refund_failed', userId, amount, generationId: referenceId, reason, detail: lastError,
+    });
 
-    // Durable marker so the missing refund is discoverable in the database
-    // (uses only columns the normal history insert already relies on)
     try {
         await admin.from('generation_history').insert({
             user_id: userId,
@@ -121,8 +159,13 @@ async function refundCredits(userId: string, amount: number, referenceId: string
             status: 'failed',
         });
     } catch (markerErr) {
-        console.error('CRITICAL: Failed to write PENDING_REFUND marker', { userId, amount, referenceId, markerErr });
+        logger.error('Could not write PENDING_REFUND marker', markerErr instanceof Error ? markerErr : undefined, {
+            event: 'tts.refund_marker_failed', userId, amount, generationId: referenceId,
+        });
     }
+
+    alertAfterResponse('refund_failed', `A refund of ${amount} credits could not be paid automatically (${referenceId}). `
+        + 'Find it with: generation_history where text starts with PENDING_REFUND.', { userId, amount, generationId: referenceId });
 
     return false;
 }
@@ -171,9 +214,8 @@ function wavDurationSeconds(buffer: ArrayBuffer): number | null {
  * Returns null when the audio looks complete.
  */
 function detectTruncation(audio: ArrayBuffer, charCount: number, speed = 1.0): string | null {
-    // Only parses WAV. MP3 (Fish) returns null and is never flagged — which is
-    // correct: Fish measured 8/8 voices at 100% coverage and has never been
-    // observed truncating. The detector exists for Gemini, which does.
+    // Only parses WAV. MP3 (Fish, Smallest) returns null and is never flagged:
+    // both measured 100% coverage. The detector exists for Gemini, which does.
     const seconds = wavDurationSeconds(audio);
     if (seconds === null || seconds <= 0) return null; // unparseable — do not block
     const rate = charCount / seconds;
@@ -194,12 +236,11 @@ async function storeAudioInBucket(
     generationId: string,
     audioBuffer: ArrayBuffer,
     format: { extension: string; mimeType: string },
-): Promise<string | null> {
+): Promise<{ url: string | null; error: string | null }> {
     try {
         const admin = getAdminClient();
         const filePath = `${userId}/${generationId}.${format.extension}`;
 
-        // Upload to Supabase Storage bucket "audio-generations"
         const { error: uploadError } = await admin.storage
             .from('audio-generations')
             .upload(filePath, audioBuffer, {
@@ -207,24 +248,19 @@ async function storeAudioInBucket(
                 upsert: true,
             });
 
-        if (uploadError) {
-            console.error('Failed to upload audio to storage:', uploadError.message);
-            return null;
-        }
+        if (uploadError) return { url: null, error: uploadError.message };
 
-        // Get public URL
         const { data: urlData } = admin.storage
             .from('audio-generations')
             .getPublicUrl(filePath);
 
-        return urlData?.publicUrl || null;
+        return { url: urlData?.publicUrl || null, error: urlData?.publicUrl ? null : 'no public URL returned' };
     } catch (err) {
-        console.error('Error storing audio in bucket:', err);
-        return null;
+        return { url: null, error: err instanceof Error ? err.message : String(err) };
     }
 }
 
-// Save generation to history
+// Save generation to history (non-critical: the user already has the audio)
 async function saveToHistory(
     userId: string,
     text: string,
@@ -236,7 +272,6 @@ async function saveToHistory(
     settings: Record<string, unknown>
 ) {
     const admin = getAdminClient();
-
     const { error } = await admin
         .from('generation_history')
         .insert({
@@ -252,63 +287,77 @@ async function saveToHistory(
         });
 
     if (error) {
-        console.error('Error saving to history:', error);
+        logger.warn('Could not save completed generation to history', {
+            event: 'tts.history_write_failed', userId, voiceId, code: error.code, detail: error.message,
+        });
     }
 }
 
-/**
- * Should this engine error be retried?
- *
- * Between 13-14 Sep 2026 roughly half of all generations failed and were
- * refunded. Every one was recorded only as "TTS generation failed" with no
- * retry, so a single throttle or blip from a provider became a customer-visible
- * failure. Transient faults must be retried; permanent ones must not, because
- * retrying a bad key or malformed request just burns time and money.
- */
-function isTransientEngineError(message: string): boolean {
-    const m = message.toLowerCase();
-    // Never retry: the request or credentials are wrong and will stay wrong.
-    if (/http 40[0-4]|unauthorized|invalid token|missing .*api_key|not configured/.test(m)) {
-        return false;
+// Production's generation_history was built from an older schema with no
+// error_message column, and the insert that used it failed silently from
+// 16 Sep to 12 Oct 2026, so not one failure was recorded. Failure details now
+// always go in settings.failure; the column is used only once it exists.
+let historyHasErrorColumn = true;
+
+/** Record a failed generation so the cause is answerable from the database. */
+async function recordFailedGeneration(
+    ctx: { userId: string; generationId: string; text: string; voiceId: string; voiceName: string; engine: string; characters: number },
+    failure: ClassifiedFailure,
+    reason: string,
+    attempts: number,
+    elapsedMs: number,
+): Promise<void> {
+    const base = {
+        user_id: ctx.userId,
+        text: ctx.text.substring(0, 500),
+        voice_id: ctx.voiceId,
+        voice_name: ctx.voiceName,
+        audio_url: '',
+        characters_used: ctx.characters,
+        credits_used: 0, // refunded, so nothing was charged
+        settings: {
+            engine: ctx.engine,
+            generationId: ctx.generationId,
+            failure: {
+                category: failure.category,
+                providerStatus: failure.providerStatus ?? null,
+                attempts,
+                elapsedMs,
+                reason: reason.substring(0, 500),
+            },
+        },
+        status: 'failed',
+    };
+
+    try {
+        const admin = getAdminClient();
+        let error = null as null | { code?: string; message: string };
+        if (historyHasErrorColumn) {
+            ({ error } = await admin.from('generation_history').insert({
+                ...base,
+                error_message: `${failure.category}: ${reason}`.substring(0, 500),
+            }));
+            if (error && /error_message/.test(error.message)) {
+                historyHasErrorColumn = false;
+                logger.warn('generation_history has no error_message column; run step40-error-logging.sql', {
+                    event: 'tts.history_missing_error_column',
+                });
+                ({ error } = await admin.from('generation_history').insert(base));
+            }
+        } else {
+            ({ error } = await admin.from('generation_history').insert(base));
+        }
+        if (error) {
+            logger.error('Could not record failed generation', undefined, {
+                event: 'tts.failure_record_failed', generationId: ctx.generationId, code: error.code, detail: error.message,
+            });
+        }
+    } catch (err) {
+        // Diagnostics must never break the user-facing path.
+        logger.error('Could not record failed generation', err instanceof Error ? err : undefined, {
+            event: 'tts.failure_record_failed', generationId: ctx.generationId,
+        });
     }
-    return /http (408|409|425|429|5\d\d)|rate.?limit|too many requests|timed? ?out|timeout|econnreset|etimedout|socket hang up|network|fetch failed|temporarily/.test(m);
-}
-
-/**
- * Is this specifically a provider CAPACITY error — all concurrency slots busy?
- *
- * VERIFIED 2026-09-16 against the live Fish API: 8 simultaneous requests gave
- * 5 x HTTP 200 and 3 x HTTP 429 "exceeded your current concurrency limit",
- * every rejection returning in under 300ms. Fish permits 5 in flight.
- *
- * This matters because capacity errors need a different wait from other
- * transient faults. A 5xx clears on its own in milliseconds; a busy slot only
- * frees when another request finishes, which takes seconds. Retrying a
- * capacity error too soon is not a retry at all — it is a second failure.
- */
-function isCapacityError(message: string): boolean {
-    const m = message.toLowerCase();
-    return /http 429|concurrency limit|too many requests|rate.?limit/.test(m);
-}
-
-/**
- * Has the provider account run out of money or quota?
- *
- * This is its own category because it is invisible by default and looks
- * exactly like a generic failure. Smallest.ai's balance hit zero on
- * 2026-09-07 — 249 preview-generation calls drained the entire 20-credit
- * balance in two minutes — and stayed at zero until 15 Sep. For eight days
- * every customer who picked one of the 249 Smallest voices was refused.
- *
- * A refused request costs nothing, so it never appears on a provider's spend
- * dashboard. Eight days of "quiet" there is indistinguishable from nobody
- * calling at all, which is exactly why this went unnoticed. Never retried —
- * retrying does not add funds — but logged unmistakably so it is greppable
- * the first time it happens rather than the eighth day.
- */
-function isProviderFundingError(message: string): boolean {
-    const m = message.toLowerCase();
-    return /http 40[23]|insufficient|no credits|out of credits|quota exceeded|payment required|billing|top ?up|balance/.test(m);
 }
 
 /** Spread simultaneous retries so throttled callers do not collide again. */
@@ -326,76 +375,75 @@ function estimateAttemptMs(engine: string, characters: number): number {
     return characters * rate * 2;
 }
 
-/**
- * Record a failed generation so the cause is answerable later.
- *
- * Previously only successes were written to generation_history, so a failure
- * left no voice, no engine and no error text — which is why 1,359 refunds
- * could not be attributed to any provider after the fact.
- */
-async function recordFailedGeneration(
-    userId: string,
-    generationId: string,
-    text: string,
-    voiceId: string,
-    voiceName: string,
-    engine: string,
-    charactersUsed: number,
-    reason: string,
-): Promise<void> {
-    try {
-        const admin = getAdminClient();
-        await admin.from('generation_history').insert({
-            user_id: userId,
-            text: text.substring(0, 500),
-            voice_id: voiceId,
-            voice_name: voiceName,
-            audio_url: '',
-            characters_used: charactersUsed,
-            credits_used: 0,                 // refunded, so nothing was charged
-            settings: { engine, generationId },
-            status: 'failed',
-            error_message: reason.substring(0, 500),
-        });
-    } catch (err) {
-        // Diagnostics must never break the user-facing path.
-        console.error('[TTS] could not record failed generation', { generationId, err });
-    }
+/** Answer a charged request that failed. Only claims "nothing was charged" if the refund went through. */
+function failureResponse(failure: ClassifiedFailure, generationId: string, refunded: number) {
+    return NextResponse.json({
+        error: failure.userError,
+        code: failure.category,
+        message: refunded > 0
+            ? failure.userMessage
+            : `${failure.userError}. We could not return your credits automatically; our team has been alerted `
+              + `and will restore them. Reference: ${generationId}.`,
+        generationId,
+        refunded,
+    }, { status: failure.httpStatus });
+}
+
+/** Send an ops alert after the user has their answer, never on the request's critical path. */
+function alertAfterResponse(key: string, text: string, context: Record<string, unknown>) {
+    after(() => alertOps(key, text, context));
 }
 
 export async function POST(request: NextRequest) {
+    const requestStartedAt = Date.now();
+    // Set once credits are taken, cleared once they are refunded or the audio
+    // is delivered, so an unexpected error can never keep a user's credits.
+    let charge: { userId: string; credits: number; generationId: string } | null = null;
+    let delivered = false;
+
     try {
         // 1. Authenticate user
         const user = await getAuthenticatedUser();
-
         if (!user) {
-            return NextResponse.json(
-                { error: 'Authentication required' },
-                { status: 401 }
-            );
+            return refuse(401, {
+                error: 'Authentication required',
+                code: 'auth_required',
+                message: 'Your session has expired. Please log in again, then retry. Nothing was charged.',
+            }, {});
         }
-
         const userId = user.id;
 
         // 2. Get user profile and check credits
-        const profile = await getUserProfile(userId);
-
+        const { profile, dbError } = await getUserProfile(userId);
+        if (dbError) {
+            logger.error('Profile lookup failed', undefined, { event: 'tts.profile_lookup_failed', userId, detail: dbError });
+            return refuse(503, {
+                error: 'Service temporarily unavailable',
+                code: 'database_unavailable',
+                message: 'We could not load your account just now, so nothing was charged. Please try again in a few seconds.',
+            }, { userId });
+        }
         if (!profile) {
-            return NextResponse.json(
-                { error: 'User profile not found' },
-                { status: 404 }
-            );
+            return refuse(404, {
+                error: 'User profile not found',
+                code: 'profile_missing',
+                message: 'Your account is not fully set up yet. Please refresh the page and try again. Nothing was charged.',
+            }, { userId });
         }
 
         // 3. Parse request body
-        const body = await request.json();
-        const { text, voice_id, voice_name, voice_settings } = body;
+        const body = await request.json().catch(() => null);
+        const { text, voice_id, voice_name, voice_settings } = (body ?? {}) as {
+            text?: string; voice_id?: string; voice_name?: string;
+            voice_settings?: { stability?: number; similarity_boost?: number; style?: number; speed?: number };
+        };
 
         if (!text || !voice_id) {
-            return NextResponse.json(
-                { error: 'Missing text or voice_id' },
-                { status: 400 }
-            );
+            return refuse(400, {
+                error: 'Missing text or voice_id',
+                code: 'bad_request',
+                message: 'Please enter some text and pick a voice.',
+            }, { userId });
         }
 
         // 4. Calculate credits needed (1 credit per character)
@@ -403,100 +451,106 @@ export async function POST(request: NextRequest) {
         const creditsNeeded = charactersUsed * CREDITS_CONFIG.COST_PER_CHARACTER;
 
         // 4b. Reject anything above the engine's proven-safe ceiling BEFORE
-        // charging. Previously this was unbounded: oversized text was accepted,
-        // billed in full, and silently truncated by the engine.
+        // charging. Oversized text used to be billed in full and truncated.
         const engine = getVoiceEngine(voice_id);
         const engineMaxChars = ENGINE_LIMITS[engine].maxCharsPerRequest;
+        const logCtx = { userId, voiceId: voice_id, engine, chars: charactersUsed };
         if (charactersUsed > engineMaxChars) {
-            return NextResponse.json({
+            return refuse(413, {
                 error: 'Text too long for this voice',
+                code: 'text_too_long',
                 engine,
                 maxCharsPerRequest: engineMaxChars,
                 charactersSubmitted: charactersUsed,
-                message: `This voice runs on ${engine}, which reliably handles `
-                    + `${engineMaxChars} characters per request. Split the text into `
-                    + `smaller parts (Script to Voice does this automatically).`,
-            }, { status: 413 });
+                message: `This voice can read up to ${engineMaxChars.toLocaleString('en-IN')} characters at a time. `
+                    + 'Split the text into smaller parts (Script to Voice does this automatically). Nothing was charged.',
+            }, logCtx);
         }
 
         // 5. Check if user has enough credits
         if (profile.credits_remaining < creditsNeeded) {
-            return NextResponse.json({
+            return refuse(402, {
                 error: 'Insufficient credits',
+                code: 'insufficient_credits',
                 creditsNeeded,
                 creditsRemaining: profile.credits_remaining,
-                message: `You need ${creditsNeeded} credits but only have ${profile.credits_remaining}. Please upgrade or purchase more credits.`,
-            }, { status: 402 }); // 402 Payment Required
+                message: `This needs ${creditsNeeded.toLocaleString('en-IN')} credits and you have `
+                    + `${profile.credits_remaining.toLocaleString('en-IN')}. Buy more credits or upgrade your plan to continue.`,
+            }, { ...logCtx, creditsRemaining: profile.credits_remaining });
         }
 
         // 6. Check rate limits
         const tier = profile.subscription_tier as keyof typeof TIER_RATE_LIMITS || 'free';
         const rateLimitResult = await checkUserRateLimit(userId, tier, 'generation');
-
         if (!rateLimitResult.success) {
-            return NextResponse.json(
-                {
-                    error: 'Rate limit exceeded',
-                    retryAfter: rateLimitResult.retryAfter,
-                    message: `Too many requests. Please wait ${rateLimitResult.retryAfter} seconds.`,
-                },
-                {
-                    status: 429,
-                    headers: getRateLimitHeaders(rateLimitResult),
-                }
-            );
+            return refuse(429, {
+                error: 'Rate limit exceeded',
+                code: 'rate_limited',
+                retryAfter: rateLimitResult.retryAfter,
+                message: `You have reached the ${tier} plan's limit of generations for now. `
+                    + `Please wait ${rateLimitResult.retryAfter} seconds and try again. Nothing was charged.`,
+            }, { ...logCtx, tier, retryAfter: rateLimitResult.retryAfter }, getRateLimitHeaders(rateLimitResult));
         }
 
-        // 7. Get the voice name to send to Kie.ai API
+        // 7. Get the voice name to send to the engine
         const voiceData = getVoiceById(voice_id);
         const voiceNameForApi = voiceData?.voiceName || voice_name || voice_id;
 
         // 8. Generate unique ID for this generation
-        const requestStartedAt = Date.now();
         const generationId = `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const ctx = {
+            userId, generationId, text, voiceId: voice_id,
+            voiceName: voice_name || voiceNameForApi, engine, characters: charactersUsed,
+        };
 
         // 9. PRE-DEDUCT credits atomically (row-locked, prevents race conditions)
         const creditResult = await preDeductCredits(
             userId,
             creditsNeeded,
             `TTS Generation: ${charactersUsed} characters`,
-            generationId
+            generationId,
         );
 
         if (!creditResult.success) {
-            const status = creditResult.error?.includes('Insufficient') ? 402 : 500;
-            return NextResponse.json({
-                error: creditResult.error || 'Credit deduction failed',
-                creditsNeeded,
-                creditsRemaining: creditResult.newBalance,
-            }, { status });
+            if (creditResult.insufficient) {
+                return refuse(402, {
+                    error: 'Insufficient credits',
+                    code: 'insufficient_credits',
+                    creditsNeeded,
+                    creditsRemaining: creditResult.newBalance,
+                    message: `This needs ${creditsNeeded.toLocaleString('en-IN')} credits and you have `
+                        + `${creditResult.newBalance.toLocaleString('en-IN')}. Buy more credits or upgrade your plan to continue.`,
+                }, logCtx);
+            }
+            logger.error('Credit deduction failed', undefined, { event: 'tts.charge_failed', generationId, ...logCtx, detail: creditResult.rpcError });
+            return refuse(503, {
+                error: 'Service temporarily unavailable',
+                code: 'charge_failed',
+                message: 'We could not update your credit balance just now, so nothing was generated. Please try again in a few seconds.',
+            }, { generationId, ...logCtx });
         }
+        charge = { userId, credits: creditsNeeded, generationId };
 
-        // 10. Generate, VERIFYING each result and retrying partial output.
-        //
-        // Gemini returns a "success" response containing only part of the text
-        // roughly 1 in 4 times, at any length — it is non-deterministic, so no
-        // input size makes it safe. Previously that partial audio was stored
-        // and billed in full. Now every result is measured, and a truncated
-        // one is thrown away and re-requested rather than sold to the user.
-        const runEngine = async (): Promise<ArrayBuffer> => {
+        // 10. Generate, VERIFYING each result and retrying where it can help.
+        // Each attempt may use only what is left of the function's budget, so a
+        // hung provider call is cut off while there is still time to refund.
+        const runEngine = async (timeoutMs: number): Promise<ArrayBuffer> => {
             if (voiceData?.engine === 'smallest' && voiceData.smallestVoiceId) {
-                // Smallest.ai Lightning v3.1 Pro (synchronous REST, native MP3)
                 return generateSmallestTTS({
                     text,
                     voiceId: voiceData.smallestVoiceId,
                     speed: Math.round((voice_settings?.speed ?? 1.0) * 100) / 100,
+                    timeoutMs,
                 });
             }
             if (voiceData?.engine === 'fish' && voiceData.fishReferenceId) {
-                // Fish Audio S2.1 Pro (synchronous streaming API)
                 return generateFishTTS({
                     text,
                     referenceId: voiceData.fishReferenceId,
                     speed: Math.round((voice_settings?.speed ?? 1.0) * 100) / 100,
+                    timeoutMs,
                 });
             }
-            // Gemini 3.1 Flash TTS via Kie.ai
             return generateTTS({
                 text,
                 voice: voiceNameForApi,
@@ -506,154 +560,153 @@ export async function POST(request: NextRequest) {
                     speed: Math.round((voice_settings.speed ?? 1.0) * 100) / 100,
                     style: Math.round((voice_settings.style ?? 0) * 100) / 100,
                 } : undefined,
+                timeoutMs,
             });
         };
+        const MIN_ATTEMPT_MS = 15_000;
 
         let audioBuffer: ArrayBuffer | null = null;
-        let lastTruncation: string | null = null;
+        let lastOutcome: { kind: 'error'; failure: ClassifiedFailure; reason: string } | { kind: 'truncated'; detail: string } | null = null;
+        let attempts = 0;
 
         for (let attempt = 1; attempt <= TTS_MAX_ATTEMPTS; attempt++) {
+            attempts = attempt;
+            const attemptStarted = Date.now();
             let candidate: ArrayBuffer;
             try {
-                candidate = await runEngine();
+                candidate = await runEngine(
+                    Math.max(MIN_ATTEMPT_MS, FUNCTION_BUDGET_MS - (attemptStarted - requestStartedAt)),
+                );
             } catch (genError) {
-                const engineMessage = genError instanceof Error ? genError.message : String(genError);
+                const failure = classifyEngineFailure(genError);
+                const reason = shortReason(genError);
+                lastOutcome = { kind: 'error', failure, reason };
+                const elapsed = Date.now() - requestStartedAt;
 
-                // Transient fault (throttle, 5xx, timeout) — back off and retry
-                // rather than handing the user a failure.
-                if (isTransientEngineError(engineMessage) && attempt < TTS_MAX_ATTEMPTS) {
-                    const capacity = isCapacityError(engineMessage);
-                    const schedule = capacity
-                        ? CAPACITY_RETRY_DELAYS_MS
-                        : TRANSIENT_RETRY_DELAYS_MS;
-                    const backoffMs = withJitter(
-                        schedule[Math.min(attempt - 1, schedule.length - 1)],
-                    );
+                logger.warn('Voice engine attempt failed', {
+                    event: 'tts.engine_error', generationId, ...logCtx, attempt,
+                    category: failure.category, providerStatus: failure.providerStatus, elapsedMs: elapsed, reason,
+                });
 
-                    // Only retry if the wait AND the next attempt both still fit
-                    // inside the function's life. Running out of time mid-attempt
-                    // means the process is killed before the refund executes, and
-                    // the user is charged for nothing — the failure mode that cost
-                    // 8 users 10,494 credits. Refunding early is strictly better.
-                    const elapsed = Date.now() - requestStartedAt;
+                if (failure.retryable && attempt < TTS_MAX_ATTEMPTS) {
+                    // Capacity errors wait for a slot to free; other blips retry fast.
+                    const schedule = failure.capacity ? CAPACITY_RETRY_DELAYS_MS : TRANSIENT_RETRY_DELAYS_MS;
+                    const backoffMs = withJitter(schedule[Math.min(attempt - 1, schedule.length - 1)]);
+                    // Only retry if the wait AND the next attempt still fit
+                    // inside the function's life; otherwise refund now.
                     const needed = backoffMs + estimateAttemptMs(engine, charactersUsed);
-                    if (elapsed + needed > FUNCTION_BUDGET_MS) {
-                        console.warn('[TTS] out of time budget, refunding instead of retrying', {
-                            generationId, voice_id, engine, elapsed, needed, capacity,
-                        });
-                    } else {
-                        console.warn(`[TTS] ${capacity ? 'capacity' : 'transient'} engine error, `
-                            + `retrying in ${backoffMs}ms (attempt ${attempt}/${TTS_MAX_ATTEMPTS})`,
-                            { generationId, voice_id, engine, engineMessage });
+                    if (elapsed + needed <= FUNCTION_BUDGET_MS) {
                         await new Promise(resolve => setTimeout(resolve, backoffMs));
                         continue;
                     }
-                }
-
-                // Permanent, or out of attempts. Record WHY before refunding —
-                // a bare "TTS generation failed" is unattributable afterwards.
-                if (isProviderFundingError(engineMessage)) {
-                    // Deliberately shouty and greppable: this is an account
-                    // problem, not a code problem, and nobody finds it in time
-                    // unless it names itself.
-                    console.error(`[TTS] PROVIDER OUT OF FUNDS — ${engine.toUpperCase()} `
-                        + `is refusing requests for billing reasons. Every voice on this `
-                        + `engine is down until the account is topped up.`,
-                        { generationId, userId, voice_id, engine, engineMessage });
-                } else {
-                    console.error('[TTS] engine failure', {
-                        generationId, userId, voice_id, engine, attempt, engineMessage,
+                    logger.warn('Out of time budget, refunding instead of retrying', {
+                        event: 'tts.retry_skipped', generationId, engine, attempt, elapsedMs: elapsed, neededMs: needed,
+                        category: failure.category,
                     });
                 }
-                await recordFailedGeneration(
-                    userId, generationId, text, voice_id,
-                    voice_name || voiceNameForApi, engine, charactersUsed, engineMessage,
-                );
-                await refundCredits(
-                    userId, creditsNeeded, generationId,
-                    `${engine} error: ${engineMessage.substring(0, 140)}`,
-                );
-                throw genError;
+                break;
             }
 
-            const truncation = detectTruncation(candidate, charactersUsed,
-                voice_settings?.speed ?? 1.0);
+            const truncation = detectTruncation(candidate, charactersUsed, voice_settings?.speed ?? 1.0);
             if (!truncation) {
-                if (attempt > 1) {
-                    console.log(`[TTS] Recovered from truncation on attempt ${attempt}`,
-                        { generationId, voice_id, engine });
-                }
                 audioBuffer = candidate;
                 break;
             }
 
-            lastTruncation = truncation;
-            console.warn(`[TTS] Truncated output on attempt ${attempt}/${TTS_MAX_ATTEMPTS}`,
-                { userId, generationId, voice_id, engine, charactersUsed, truncation });
+            lastOutcome = { kind: 'truncated', detail: truncation };
+            const elapsed = Date.now() - requestStartedAt;
+            logger.warn('Engine returned truncated audio', {
+                event: 'tts.truncated', generationId, ...logCtx, attempt, elapsedMs: elapsed, detail: truncation,
+            });
+            // Retry only if another attempt of the length just measured still
+            // fits. (This path used to ignore the budget; the 2x model used for
+            // errors is too pessimistic here, since this attempt finished and its
+            // real duration is known.)
+            const attemptMs = Date.now() - attemptStarted;
+            if (attempt < TTS_MAX_ATTEMPTS && elapsed + attemptMs > FUNCTION_BUDGET_MS) {
+                logger.warn('Out of time budget, refunding instead of retrying', {
+                    event: 'tts.retry_skipped', generationId, engine, attempt, elapsedMs: elapsed, neededMs: attemptMs,
+                    category: 'truncated',
+                });
+                break;
+            }
         }
 
-        // Every attempt came back short — refund in full rather than selling
-        // the user a partial voiceover.
+        const elapsedMs = () => Date.now() - requestStartedAt;
+
+        // Engine failed (or every attempt came back short): refund, record, explain.
         if (!audioBuffer) {
-            console.error('[TTS] All attempts truncated', {
-                userId, generationId, voice_id, engine, charactersUsed, lastTruncation,
+            const failure = lastOutcome?.kind === 'error' ? lastOutcome.failure : failureFor('truncated');
+            const reason = lastOutcome?.kind === 'error'
+                ? lastOutcome.reason
+                : `truncated after ${attempts} attempts: ${lastOutcome?.kind === 'truncated' ? lastOutcome.detail : ''}`;
+
+            // Refund first: the user's credits matter more than the paperwork.
+            const refunded = await refundCredits(userId, creditsNeeded, generationId,
+                `${engine} ${failure.category}: ${reason.substring(0, 140)}`);
+            charge = null;
+
+            logger.error('Generation failed', undefined, {
+                event: 'tts.failed', generationId, ...logCtx, attempts, category: failure.category,
+                providerStatus: failure.providerStatus, elapsedMs: elapsedMs(), refunded, reason,
             });
-            await recordFailedGeneration(
-                userId, generationId, text, voice_id,
-                voice_name || voiceNameForApi, engine, charactersUsed,
-                `truncated after ${TTS_MAX_ATTEMPTS} attempts: ${lastTruncation}`,
-            );
-            await refundCredits(userId, creditsNeeded, generationId,
-                `${engine} truncated after ${TTS_MAX_ATTEMPTS} attempts: ${lastTruncation}`);
-            return NextResponse.json({
-                error: 'Incomplete audio',
-                message: 'The voice engine kept returning only part of your script, '
-                    + 'so nothing was charged. Please try a different voice — '
-                    + 'the Fish Audio voices are the most reliable for long text.',
-                detail: lastTruncation,
-                refunded: creditsNeeded,
-            }, { status: 502 });
+            await recordFailedGeneration(ctx, failure, reason, attempts, elapsedMs());
+
+            if (failure.alert) {
+                alertAfterResponse(`${engine}:${failure.category}`,
+                    `${ENGINE_LABEL[engine] ?? engine} is refusing requests (${failure.category.replace(/_/g, ' ')}). `
+                    + `Every voice on it is down until this is fixed. Provider said: ${reason.substring(0, 200)}`,
+                    { engine, category: failure.category, providerStatus: failure.providerStatus });
+            }
+            return failureResponse(failure, generationId, refunded ? creditsNeeded : 0);
         }
 
         // 11. Store audio in Supabase Storage — if this fails, REFUND credits.
-        // Fish returns MP3, Kie/Gemini returns WAV; storing one under the
-        // other's extension makes the file unplayable in the browser.
+        // Fish and Smallest return MP3, Kie/Gemini returns WAV; storing one
+        // under the other's extension makes the file unplayable.
         const outputFormat =
             engine === 'smallest' ? SMALLEST_OUTPUT_FORMAT
             : engine === 'fish'   ? FISH_OUTPUT_FORMAT
             : TTS_OUTPUT_FORMAT;
-        const storedAudioUrl = await storeAudioInBucket(
-            userId, generationId, audioBuffer, outputFormat,
-        );
+        const stored = await storeAudioInBucket(userId, generationId, audioBuffer, outputFormat);
 
-        if (!storedAudioUrl) {
-            await recordFailedGeneration(
-                userId, generationId, text, voice_id,
-                voice_name || voiceNameForApi, engine, charactersUsed, 'audio storage failed',
-            );
-            await refundCredits(userId, creditsNeeded, generationId, 'Audio storage failed');
-            return NextResponse.json(
-                { error: 'Failed to store generated audio' },
-                { status: 500 }
-            );
+        if (!stored.url) {
+            const failure = failureFor('storage');
+            const reason = `audio storage failed: ${stored.error ?? 'unknown'}`;
+            const refunded = await refundCredits(userId, creditsNeeded, generationId, 'Audio storage failed');
+            charge = null;
+            logger.error('Generation failed', undefined, {
+                event: 'tts.failed', generationId, ...logCtx, attempts, category: failure.category,
+                elapsedMs: elapsedMs(), refunded, reason,
+            });
+            await recordFailedGeneration(ctx, failure, reason, attempts, elapsedMs());
+            alertAfterResponse('storage', `Generated audio could not be saved to Supabase Storage: ${stored.error ?? 'unknown'}`,
+                { engine, generationId });
+            return failureResponse(failure, generationId, refunded ? creditsNeeded : 0);
         }
 
         // 12. Save to history (non-critical — no refund if this fails)
+        charge = null;
+        delivered = true;
         await saveToHistory(
             userId,
             text,
             voice_id,
             voice_name || voiceNameForApi,
-            storedAudioUrl,
+            stored.url,
             charactersUsed,
             creditsNeeded,
             voice_settings || {}
         );
 
+        logger.info('Generation completed', {
+            event: 'tts.completed', generationId, ...logCtx, attempts, elapsedMs: elapsedMs(),
+        });
+
         // 13. Return success response
         return NextResponse.json({
             success: true,
-            audioUrl: storedAudioUrl,
+            audioUrl: stored.url,
             taskId: generationId,
             usage: {
                 characters: charactersUsed,
@@ -663,66 +716,34 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('TTS API Error:', errorMessage, error);
+        // Unexpected error (a bug, not an engine answer). If credits were
+        // taken and not yet returned, return them before answering.
+        const reason = shortReason(error);
+        const pending = charge;
+        logger.error('Unexpected error in TTS route', error instanceof Error ? error : new Error(reason), {
+            event: 'tts.unexpected_error', generationId: pending?.generationId, userId: pending?.userId,
+            charged: !!pending, delivered, elapsedMs: Date.now() - requestStartedAt,
+        });
 
-        // Handle specific error types
-        if (error instanceof Error) {
-            // Provider is at capacity — every concurrency slot is busy. Fish
-            // allows 5 in flight (verified 2026-09-16), so at peak this is
-            // simply queueing, not a fault. Nothing was charged; say so, and
-            // answer 503 rather than 500 so it is not logged as a server bug.
-            if (isCapacityError(error.message)) {
-                return NextResponse.json(
-                    {
-                        error: 'Voice engine busy',
-                        message: 'All voice slots are in use right now, so nothing '
-                            + 'was charged. Please try again in a few seconds.',
-                    },
-                    { status: 503 }
-                );
+        let message = 'Something went wrong on our side, so nothing was charged. Please try again.';
+        if (pending) {
+            const refunded = await refundCredits(pending.userId, pending.credits, pending.generationId,
+                `unexpected error: ${reason.substring(0, 120)}`);
+            if (!refunded) {
+                message = 'Something went wrong on our side. We could not return your credits automatically; '
+                    + `our team has been alerted and will restore them. Reference: ${pending.generationId}.`;
             }
-            if (/rate limit/i.test(error.message)) {
-                return NextResponse.json(
-                    { error: 'Rate limit exceeded', message: error.message },
-                    { status: 429 }
-                );
-            }
-            // A missing key is our misconfiguration, never the user's problem.
-            // SMALLEST_API_KEY was absent from this list, so for nine days the
-            // raw text "Missing SMALLEST_API_KEY environment variable" was
-            // returned straight to the browser on every Smallest voice.
-            // An unfunded provider account is our problem, not the user's, and
-            // it takes down every voice on that engine at once.
-            if (isProviderFundingError(error.message)) {
-                return NextResponse.json(
-                    {
-                        error: 'Voice unavailable',
-                        message: 'These voices are temporarily unavailable and nothing '
-                            + 'was charged. Please pick a voice from another family — '
-                            + 'we have been alerted and are fixing it.',
-                    },
-                    { status: 503 }
-                );
-            }
-            if (/KIEAI_API_KEY|FISH_AUDIO_API_KEY|SMALLEST_API_KEY|not configured/.test(error.message)) {
-                return NextResponse.json(
-                    {
-                        error: 'Voice unavailable',
-                        message: 'This voice is temporarily unavailable and nothing '
-                            + 'was charged. Please pick another voice — we are on it.',
-                    },
-                    { status: 503 }
-                );
-            }
+        } else if (delivered) {
+            // The audio was made, stored and paid for; only the reply failed.
+            message = 'Your audio was created, but something went wrong showing it. Please refresh the page.';
         }
 
-        // Never hand a raw provider/internal string to the browser.
         return NextResponse.json(
             {
                 error: 'Generation failed',
-                message: 'The voice engine could not complete this generation, so '
-                    + 'nothing was charged. Please try again.',
+                code: 'unexpected_error',
+                message,
+                generationId: pending?.generationId,
             },
             { status: 500 }
         );

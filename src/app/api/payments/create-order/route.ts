@@ -12,6 +12,7 @@ import {
     getEffectivePrice,
     getTopupPrice,
 } from '@/lib/pricing';
+import { logger } from '@/lib/logger';
 
 // Initialize Razorpay
 function getRazorpayInstance() {
@@ -52,12 +53,14 @@ export async function POST(request: NextRequest) {
         const admin = getAdminClient();
         const { data: profile, error: profileError } = await admin
             .from('user_profiles')
-            .select('subscription_tier')
+            .select('subscription_tier, name')
             .eq('id', user.id)
             .single();
 
         if (profileError || !profile) {
-            console.error('[Payment] Profile lookup failed:', profileError);
+            logger.error('Payment profile lookup failed', undefined, {
+                event: 'payment.profile_missing', userId: user.id, code: profileError?.code, detail: profileError?.message,
+            });
             return NextResponse.json(
                 { error: 'User profile not found' },
                 { status: 404 }
@@ -187,8 +190,23 @@ export async function POST(request: NextRequest) {
         });
 
         if (insertError) {
-            console.error('[Payment] DB insert error:', JSON.stringify(insertError));
+            // Without this row /verify cannot find the order, so a buyer who
+            // paid would be charged and get nothing. Stop before checkout opens;
+            // the Razorpay order just created is unpaid and harmless.
+            logger.error('Could not store payment order', undefined, {
+                event: 'payment.order_store_failed', orderId: order.id, userId: user.id,
+                orderType, planId, topupPackageId, amount, code: insertError.code, detail: insertError.message,
+            });
+            return NextResponse.json(
+                { error: 'We could not start the payment. Nothing was charged. Please try again.' },
+                { status: 500 }
+            );
         }
+
+        logger.info('Payment order created', {
+            event: 'payment.order_created', orderId: order.id, userId: user.id, orderType,
+            planId, topupPackageId, billingPeriod, amount, credits,
+        });
 
         // 7. Return order details
         return NextResponse.json({
@@ -203,16 +221,18 @@ export async function POST(request: NextRequest) {
                 email: user.email,
                 name: (profile as { name?: string })?.name || '',
             },
-            _dbError: insertError ? insertError.message : null,
         });
 
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        console.error('[Payment] Order creation error:', message, error);
+        const notConfigured = message.includes('credentials') || message.includes('not configured');
+        logger.error('Payment order creation failed', error instanceof Error ? error : new Error(message), {
+            event: notConfigured ? 'payment.gateway_not_configured' : 'payment.order_create_failed',
+        });
         return NextResponse.json(
-            { error: message.includes('Razorpay') || message.includes('credentials')
-                ? 'Payment gateway not configured. Please contact support.'
-                : `Failed to create payment order: ${message}` },
+            { error: notConfigured
+                ? 'Payments are not available right now. Nothing was charged. Please contact support.'
+                : 'We could not start the payment. Nothing was charged. Please try again.' },
             { status: 500 }
         );
     }

@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { TTS_OUTPUT_FORMAT } from '@/lib/kieai';
+import { SCRIPT_TO_VOICE_MAX_PARTS } from '@/lib/constants';
 
 export const maxDuration = 120;
 
@@ -149,8 +150,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No audio URLs provided' }, { status: 400 });
         }
 
-        if (audioUrls.length > 50) {
-            return NextResponse.json({ error: 'Too many chunks (max 50)' }, { status: 400 });
+        if (audioUrls.length > SCRIPT_TO_VOICE_MAX_PARTS) {
+            return NextResponse.json(
+                { error: `Too many parts to join (the most is ${SCRIPT_TO_VOICE_MAX_PARTS})` },
+                { status: 400 },
+            );
         }
 
         // 3. Fetch all audio buffers in parallel

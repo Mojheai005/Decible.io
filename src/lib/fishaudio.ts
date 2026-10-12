@@ -11,7 +11,12 @@
 // egress quotas. 128 kbps is transparent for speech and cuts storage AND
 // egress by ~81%; 64 kbps saves more but is audibly thinner on headphones,
 // and the audio IS the product here.
+//
+// An empty account answers HTTP 402 "Insufficient API credit. API credit is
+// managed independently from platform credit": a Fish app subscription does
+// not fund the API.
 // ===========================================
+import { EngineError } from './tts-errors'
 
 export const FISH_BASE_URL = 'https://api.fish.audio'
 
@@ -29,21 +34,26 @@ export const FISH_OUTPUT_FORMAT = {
 
 const FISH_MP3_BITRATE = 128
 
+// A 1,500-character request takes ~23s, ~58s on a slow day. The route passes
+// the time left in its own budget; this default only applies to other callers.
+const DEFAULT_TIMEOUT_MS = 55_000
+
 export interface FishTTSParams {
     text: string
     referenceId: string   // Fish voice model id
     speed?: number        // 0.5 - 2.0, default 1.0
+    /** Give up after this long, so the caller can still refund and answer. */
+    timeoutMs?: number
 }
 
 /**
  * Generate TTS audio using Fish Audio S2.1 Pro.
  * Synchronous: the response body IS the audio (no task polling).
- * Returns a WAV ArrayBuffer, same contract as kieai's generateTTS.
  */
 export async function generateFishTTS(params: FishTTSParams): Promise<ArrayBuffer> {
     const apiKey = process.env.FISH_AUDIO_API_KEY
     if (!apiKey) {
-        throw new Error('Missing FISH_AUDIO_API_KEY environment variable')
+        throw new EngineError('fish', 'Missing FISH_AUDIO_API_KEY environment variable')
     }
 
     const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -66,12 +76,16 @@ export async function generateFishTTS(params: FishTTSParams): Promise<ArrayBuffe
             latency: 'normal',
             prosody: { speed, volume: 0 },
         }),
+        signal: AbortSignal.timeout(params.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     })
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => '')
-        console.error('[Fish] TTS HTTP Error:', response.status, errorText)
-        throw new Error(`Fish Audio TTS failed (HTTP ${response.status}): ${errorText || response.statusText}`)
+        throw new EngineError(
+            'fish',
+            `Fish Audio TTS failed (HTTP ${response.status}): ${errorText.slice(0, 400) || response.statusText}`,
+            { status: response.status },
+        )
     }
 
     const audioBuffer = await response.arrayBuffer()
@@ -79,7 +93,7 @@ export async function generateFishTTS(params: FishTTSParams): Promise<ArrayBuffe
     // MP3 is far denser than WAV, so the old 1000-byte floor would have let a
     // near-empty clip through. A real generation is comfortably above this.
     if (!audioBuffer || audioBuffer.byteLength < 500) {
-        throw new Error('Fish Audio returned empty or invalid audio')
+        throw new EngineError('fish', 'Fish Audio returned empty or invalid audio')
     }
 
     return audioBuffer

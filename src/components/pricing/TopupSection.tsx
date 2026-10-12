@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Plus, Zap, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TopupPackage, getTopupPrice, formatPrice, formatCredits } from '@/lib/pricing';
+import { TopupPackage, getTopupPrice, formatPrice, formatPriceWithDecimals, formatCredits } from '@/lib/pricing';
 
 interface TopupSectionProps {
     currentTier: string;
@@ -20,9 +20,10 @@ export function TopupSection({
 }: TopupSectionProps) {
     const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
 
+    // Selecting a package only selects it. It used to start the checkout as
+    // well, so a buyer comparing packages was sent to payment on first click.
     const handleSelect = (packageId: string) => {
         setSelectedPackage(packageId);
-        onSelectPackage?.(packageId);
     };
 
     // Get per-credit rate for current tier
@@ -51,7 +52,7 @@ export function TopupSection({
                     <span className="font-semibold text-gray-900 capitalize">{currentTier}</span>{' '}
                     tier rate of{' '}
                     <span className="font-semibold text-emerald-600">
-                        {formatPrice(currentRate)}/1K credits
+                        {formatPriceWithDecimals(currentRate)}/1K credits
                     </span>
                 </p>
             </div>
@@ -106,9 +107,9 @@ export function TopupSection({
                                 {formatPrice(price)}
                             </div>
 
-                            {/* Per credit rate */}
+                            {/* Rate per 1,000 credits (price is in paise). It used to print paise x 100 "per credit". */}
                             <div className="text-xs text-gray-500 mt-1">
-                                {(price / pkg.credits * 100).toFixed(2)} per credit
+                                {formatPriceWithDecimals(price / (pkg.credits / 1000))} per 1K credits
                             </div>
                         </button>
                     );

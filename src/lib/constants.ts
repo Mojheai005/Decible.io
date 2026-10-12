@@ -161,6 +161,14 @@ export const ENGINE_LIMITS = {
 
 export type TTSEngine = keyof typeof ENGINE_LIMITS
 
+// The most parts Script to Voice will stitch into one file. The stitch route
+// downloads every part into memory and uploads one object, so this bounds
+// both. It is checked BEFORE a run starts: previously a longer script was
+// generated and charged part by part and only refused at the stitching step.
+// At the engine ceilings above, 50 parts is about 20,000 characters on a
+// Gemini voice, 75,000 on Fish and 100,000 on Smallest.
+export const SCRIPT_TO_VOICE_MAX_PARTS = 50
+
 // Used when the engine is unknown — the conservative (Gemini) ceiling.
 export const DEFAULT_MAX_CHARS_PER_REQUEST = ENGINE_LIMITS.gemini.maxCharsPerRequest
 

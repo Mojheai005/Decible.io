@@ -21,9 +21,21 @@ interface RazorpayOptions {
     modal?: { ondismiss?: () => void }
 }
 
+interface RazorpayFailure {
+    error?: {
+        code?: string
+        description?: string
+        reason?: string
+        source?: string
+        step?: string
+        metadata?: { order_id?: string; payment_id?: string }
+    }
+}
+
 interface RazorpayInstance {
     open: () => void
     close: () => void
+    on: (event: 'payment.failed', handler: (response: RazorpayFailure) => void) => void
 }
 
 interface RazorpayResponse {
@@ -32,11 +44,15 @@ interface RazorpayResponse {
     razorpay_signature: string
 }
 
+export type OrderType = 'subscription' | 'upgrade' | 'topup'
+
 interface UsePaymentResult {
-    initiatePayment: (planId: string, orderType?: string, billingPeriod?: 'monthly' | 'yearly') => Promise<void>
+    /** For plans pass the plan id; for credit top-ups pass the top-up package id with orderType 'topup'. */
+    initiatePayment: (id: string, orderType?: OrderType, billingPeriod?: 'monthly' | 'yearly') => Promise<void>
     isProcessing: boolean
     processingPlanId: string | null
     error: string | null
+    success: string | null
 }
 
 function loadRazorpayScript(): Promise<boolean> {
@@ -57,45 +73,54 @@ export function usePayment(): UsePaymentResult {
     const [isProcessing, setIsProcessing] = useState(false)
     const [processingPlanId, setProcessingPlanId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [success, setSuccess] = useState<string | null>(null)
 
-    const initiatePayment = useCallback(async (planId: string, orderType = 'subscription', billingPeriod: 'monthly' | 'yearly' = 'monthly') => {
+    const initiatePayment = useCallback(async (
+        id: string,
+        orderType: OrderType = 'subscription',
+        billingPeriod: 'monthly' | 'yearly' = 'monthly',
+    ) => {
         setIsProcessing(true)
-        setProcessingPlanId(planId)
+        setProcessingPlanId(id)
         setError(null)
+        setSuccess(null)
+
+        const done = () => {
+            setIsProcessing(false)
+            setProcessingPlanId(null)
+        }
 
         try {
-            // Load Razorpay SDK
             const loaded = await loadRazorpayScript()
             if (!loaded) {
-                throw new Error('Failed to load payment gateway. Please try again.')
+                throw new Error('The payment window could not load. Check your connection and try again.')
             }
 
-            // Create order on server — API expects { type, planId }
+            // The server expects a plan id for plans and a package id for top-ups.
+            // Top-ups used to send planId, which the server rejected every time.
+            const orderBody = orderType === 'topup'
+                ? { type: 'topup', topupPackageId: id }
+                : { type: orderType, planId: id, billingPeriod }
+
             const orderResponse = await fetch('/api/payments/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: orderType, planId, billingPeriod }),
+                body: JSON.stringify(orderBody),
             })
 
             if (!orderResponse.ok) {
                 const errData = await orderResponse.json().catch(() => ({}))
-                throw new Error(errData.error || 'Failed to create order')
+                throw new Error(errData.error || 'We could not start the payment. Nothing was charged. Please try again.')
             }
 
             const orderData = await orderResponse.json()
 
-            // Debug: log DB insert errors from server
-            if (orderData._dbInsertError) {
-                console.error('[Payment] DB insert error:', orderData._dbInsertError)
-            }
-
-            // Open Razorpay checkout
             const options: RazorpayOptions = {
                 key: orderData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
                 amount: orderData.amount,
                 currency: orderData.currency || 'INR',
                 name: 'Decible',
-                description: orderData.description || `${orderType === 'topup' ? 'Credit Top-up' : 'Subscription'} - ${planId}`,
+                description: orderData.description || (orderType === 'topup' ? 'Credit top-up' : `Subscription - ${id}`),
                 order_id: orderData.orderId,
                 prefill: {
                     name: orderData.prefill?.name,
@@ -103,7 +128,6 @@ export function usePayment(): UsePaymentResult {
                 },
                 theme: { color: '#111827' },
                 handler: async (response: RazorpayResponse) => {
-                    // Verify payment on server
                     try {
                         const verifyResponse = await fetch('/api/payments/verify', {
                             method: 'POST',
@@ -114,37 +138,62 @@ export function usePayment(): UsePaymentResult {
                                 razorpay_signature: response.razorpay_signature,
                             }),
                         })
+                        const verifyData = await verifyResponse.json().catch(() => ({}))
 
                         if (!verifyResponse.ok) {
-                            throw new Error('Payment verification failed')
+                            throw new Error(verifyData.error
+                                || `We could not confirm your payment. If you were charged, contact support with payment ID ${response.razorpay_payment_id}.`)
                         }
 
-                        // Trigger credits refresh across app
+                        const credits = Number(verifyData.credits) || orderData.credits
+                        setError(null) // an earlier failed attempt in the same checkout no longer applies
+                        setSuccess(orderType === 'topup'
+                            ? `Payment successful. ${Number(credits).toLocaleString()} credits were added to your account.`
+                            : verifyData.planPending
+                                ? `Payment successful and ${Number(credits).toLocaleString()} credits were added. `
+                                    + 'Your plan change is still being applied; refresh this page in a minute.'
+                                : `Payment successful. Your plan is active and ${Number(credits).toLocaleString()} credits were added.`)
+
+                        // Refresh plan and credits everywhere in the app
                         window.dispatchEvent(new Event('credits-updated'))
                     } catch (verifyErr) {
                         setError(verifyErr instanceof Error ? verifyErr.message : 'Payment verification failed')
                     } finally {
-                        setIsProcessing(false)
-                        setProcessingPlanId(null)
+                        done()
                     }
                 },
                 modal: {
-                    ondismiss: () => {
-                        setIsProcessing(false)
-                        setProcessingPlanId(null)
-                    },
+                    ondismiss: done,
                 },
             }
 
             const rzp = new window.Razorpay(options)
+
+            // Razorpay explains a failed attempt in the browser. Show it to the
+            // buyer and store it on the order: that reason never reached the
+            // server before, so failed and abandoned checkouts looked the same.
+            rzp.on('payment.failed', (failure: RazorpayFailure) => {
+                const e = failure?.error ?? {}
+                const why = e.description ? `: ${e.description.replace(/\.$/, '')}` : ''
+                setError(`Payment failed${why}. No payment was taken; if your bank shows a debit, it is reversed automatically. `
+                    + 'You can try again or use another payment method.')
+                fetch('/api/payments/failed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        razorpay_order_id: e.metadata?.order_id || orderData.orderId,
+                        error: { code: e.code, description: e.description, reason: e.reason, source: e.source, step: e.step },
+                    }),
+                    keepalive: true,
+                }).catch(() => { /* reporting must never break checkout */ })
+            })
+
             rzp.open()
         } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Payment failed'
-            setError(msg)
-            setIsProcessing(false)
-            setProcessingPlanId(null)
+            setError(err instanceof Error ? err.message : 'Payment failed')
+            done()
         }
     }, [])
 
-    return { initiatePayment, isProcessing, processingPlanId, error }
+    return { initiatePayment, isProcessing, processingPlanId, error, success }
 }

@@ -17,7 +17,7 @@ interface GenerateParams {
     settings?: GenerateSettings
 }
 
-interface GenerationResult {
+export interface GenerationResult {
     success: boolean
     audioUrl?: string
     taskId?: string
@@ -26,7 +26,14 @@ interface GenerationResult {
         creditsUsed?: number
         creditsRemaining?: number
     }
+    // Set when success is false. `message` is the full sentence to show the
+    // user; it always says whether they were charged.
+    status?: number
+    code?: string
     error?: string
+    message?: string
+    retryAfter?: number
+    generationId?: string
     // Legacy support for TextToSpeech.tsx check
     result?: {
         audioUrl: string
@@ -34,11 +41,27 @@ interface GenerationResult {
 }
 
 interface UseGenerateResult {
-    generate: (params: GenerateParams) => Promise<GenerationResult | null>
+    /** Always resolves: check `success`, and show `message` when it is false. */
+    generate: (params: GenerateParams) => Promise<GenerationResult>
     isGenerating: boolean
     error: string | null
     result: GenerationResult | null
     audioUrl: string | null
+}
+
+// What to say when the server gave no usable explanation (a platform error
+// page, a dropped connection). These used to all read "Generation failed".
+function fallbackMessage(status: number | undefined): string {
+    if (status === undefined) {
+        return 'The connection dropped before your audio arrived. Check your connection and try again.'
+    }
+    if (status === 504 || status === 502) {
+        return 'The voice engine took too long to answer. Please try again in a moment.'
+    }
+    if (status === 401) return 'Your session has expired. Please log in again, then retry.'
+    if (status === 402) return 'You do not have enough credits for this. Buy more credits or upgrade your plan.'
+    if (status === 429) return 'Too many requests right now. Please wait a minute and try again.'
+    return 'Generation failed. Please try again.'
 }
 
 export function useGenerate(): UseGenerateResult {
@@ -47,14 +70,14 @@ export function useGenerate(): UseGenerateResult {
     const [result, setResult] = useState<GenerationResult | null>(null)
     const [audioUrl, setAudioUrl] = useState<string | null>(null)
 
-    const generate = useCallback(async (params: GenerateParams): Promise<GenerationResult | null> => {
+    const generate = useCallback(async (params: GenerateParams): Promise<GenerationResult> => {
         setIsGenerating(true)
         setError(null)
         setResult(null)
         setAudioUrl(null)
 
+        let status: number | undefined
         try {
-            // Updated to use the new DubVoice /api/tts endpoint
             const response = await fetch('/api/tts', {
                 method: 'POST',
                 headers: {
@@ -73,40 +96,47 @@ export function useGenerate(): UseGenerateResult {
                     }
                 }),
             })
+            status = response.status
 
-            if (!response.ok && response.status !== 202) {
-                const errorData = await response.json().catch(() => ({}))
-                throw new Error(errorData.error || `Generation failed: ${response.status}`)
-            }
+            const data = await response.json().catch(() => ({})) as Partial<GenerationResult>
 
-            const data = await response.json() as GenerationResult & { isPending?: boolean }
-
-            // Handle pending/timeout response — generation still processing server-side
-            if (response.status === 202 || data.isPending) {
-                throw new Error('Generation is taking longer than expected. It may still complete — check your history shortly.')
-            }
-
-            // Map flat audioUrl to the nested structure TextToSpeech expects to avoid breaking changes there
-            // OR we fix usage in TextToSpeech. Let's do both for safety.
-            const standardizedResult = {
-                ...data,
-                result: {
-                    audioUrl: data.audioUrl || ''
+            if (!response.ok || !data.audioUrl) {
+                // Keep the server's explanation. This hook used to throw away
+                // every server message, so each failure read "Generation failed".
+                const failure: GenerationResult = {
+                    success: false,
+                    status,
+                    code: data.code,
+                    error: data.error || `Generation failed (${status})`,
+                    message: data.message || fallbackMessage(status),
+                    retryAfter: data.retryAfter,
+                    generationId: data.generationId,
                 }
+                setError(failure.message ?? null)
+                setResult(failure)
+                return failure
             }
 
+            const standardizedResult: GenerationResult = {
+                ...data,
+                success: true,
+                result: { audioUrl: data.audioUrl },
+            }
             setResult(standardizedResult)
-
-            if (data.audioUrl) {
-                setAudioUrl(data.audioUrl)
-            }
-
+            setAudioUrl(data.audioUrl)
             return standardizedResult
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Generation failed'
-            setError(errorMessage)
+            const failure: GenerationResult = {
+                success: false,
+                status,
+                code: 'network_error',
+                error: err instanceof Error ? err.message : 'Network error',
+                message: fallbackMessage(status),
+            }
             console.error('Generation error:', err)
-            return null
+            setError(failure.message ?? null)
+            setResult(failure)
+            return failure
         } finally {
             setIsGenerating(false)
         }

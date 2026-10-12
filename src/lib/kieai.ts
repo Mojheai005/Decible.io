@@ -7,6 +7,19 @@
 
 import { VOICES_DATA, GEMINI_VOICES } from './voices-data'
 import { ENGINE_LIMITS } from './constants'
+import { EngineError } from './tts-errors'
+
+// Per-call deadlines, so one hung connection cannot hold the function until
+// it is killed after the credits were taken and before the refund runs.
+const CREATE_TIMEOUT_MS = 30_000
+const POLL_CALL_TIMEOUT_MS = 20_000
+const DOWNLOAD_TIMEOUT_MS = 60_000
+// A single failed status check used to fail the whole generation, although
+// the task itself usually completes. Give up only after this many in a row.
+const MAX_CONSECUTIVE_POLL_ERRORS = 3
+
+/** Time left before `deadline`, capped at `cap`, never below one second. */
+const timeLeft = (deadline: number, cap: number) => Math.max(1000, Math.min(cap, deadline - Date.now()))
 
 export const KIEAI_BASE_URL = 'https://api.kie.ai/api/v1'
 
@@ -33,6 +46,8 @@ export interface KieAITTSParams {
     voice: string  // Catalog voice name/ID (e.g. "Rachel") or a Gemini voice name (e.g. "Puck")
     voice_settings?: KieAIVoiceSettings
     language_code?: string  // No-op: Gemini TTS auto-detects language
+    /** Overall deadline for create + poll + download, so the caller can still refund and answer. */
+    timeoutMs?: number
 }
 
 interface CreateTaskResponse {
@@ -126,10 +141,10 @@ function speedToPace(speed: number): 'Natural' | 'Rapid Fire' | 'The Drift' {
 /**
  * Create a TTS task on Kie.ai
  */
-async function createTask(params: KieAITTSParams): Promise<string> {
+async function createTask(params: KieAITTSParams, deadline: number): Promise<string> {
     const apiKey = process.env.KIEAI_API_KEY
     if (!apiKey) {
-        throw new Error('Missing KIEAI_API_KEY environment variable')
+        throw new EngineError('gemini', 'Missing KIEAI_API_KEY environment variable', { phase: 'create' })
     }
 
     const settings = params.voice_settings || {}
@@ -165,18 +180,25 @@ async function createTask(params: KieAITTSParams): Promise<string> {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(timeLeft(deadline, CREATE_TIMEOUT_MS)),
     })
 
     if (!response.ok) {
-        const errorText = await response.text()
-        console.error('[Kie.ai] Create Task HTTP Error:', response.status, errorText)
-        throw new Error(`Kie.ai task creation failed (HTTP ${response.status}): ${errorText}`)
+        const errorText = await response.text().catch(() => '')
+        throw new EngineError('gemini', `Kie.ai task creation failed (HTTP ${response.status}): ${errorText.slice(0, 400)}`, {
+            status: response.status, phase: 'create',
+        })
     }
 
     const result: CreateTaskResponse = await response.json()
 
+    // Kie.ai reports most errors inside an HTTP 200, with its own code
+    // (402 insufficient credits, 429, 455 maintenance, 500...). Carry that
+    // code as the status so the classifier can tell them apart.
     if (result.code !== 200 || !result.data?.taskId) {
-        throw new Error(`Kie.ai task creation failed: ${result.msg || JSON.stringify(result)}`)
+        throw new EngineError('gemini', `Kie.ai task creation failed (code ${result.code}): ${result.msg || JSON.stringify(result).slice(0, 300)}`, {
+            status: Number(result.code) || undefined, phase: 'create',
+        })
     }
 
     return result.data.taskId
@@ -185,10 +207,10 @@ async function createTask(params: KieAITTSParams): Promise<string> {
 /**
  * Poll for task completion
  */
-async function pollTaskStatus(taskId: string): Promise<string> {
+async function pollTaskStatus(taskId: string, overallDeadline: number): Promise<string> {
     const apiKey = process.env.KIEAI_API_KEY
     if (!apiKey) {
-        throw new Error('Missing KIEAI_API_KEY environment variable')
+        throw new EngineError('gemini', 'Missing KIEAI_API_KEY environment variable', { phase: 'poll' })
     }
 
     // 90s was too short: a 1,449-char request was measured taking 284s to
@@ -196,51 +218,74 @@ async function pollTaskStatus(taskId: string): Promise<string> {
     // the user saw a failure and the credits round-tripped through a refund.
     // Stays inside the route's maxDuration of 300s.
     const pollInterval = 2000
-    const maxAttempts = Math.floor(ENGINE_LIMITS.gemini.pollTimeoutMs / pollInterval)
+    const started = Date.now()
+    const deadline = Math.min(started + ENGINE_LIMITS.gemini.pollTimeoutMs, overallDeadline)
+    let consecutiveErrors = 0
+    let lastError: EngineError | null = null
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const response = await fetch(
-            `${KIEAI_BASE_URL}/jobs/recordInfo?taskId=${taskId}`,
-            {
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                },
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(
+                `${KIEAI_BASE_URL}/jobs/recordInfo?taskId=${taskId}`,
+                {
+                    headers: { 'Authorization': `Bearer ${apiKey}` },
+                    signal: AbortSignal.timeout(timeLeft(deadline, POLL_CALL_TIMEOUT_MS)),
+                }
+            )
+
+            if (!response.ok) {
+                throw new EngineError('gemini', `Kie.ai poll failed (HTTP ${response.status})`, {
+                    status: response.status, phase: 'poll',
+                })
             }
-        )
 
-        if (!response.ok) {
-            console.error('Kie.ai Poll Error:', response.status)
-            throw new Error(`Failed to poll task status: ${response.status}`)
-        }
+            const result: TaskStatusResponse = await response.json()
 
-        const result: TaskStatusResponse = await response.json()
-
-        if (result.code !== 200) {
-            console.error('[Kie.ai] Poll non-200 code:', JSON.stringify(result))
-            throw new Error(`Task polling failed: ${result.msg}`)
-        }
-
-        const { state, resultJson, failMsg, failCode } = result.data
-
-        if (state === 'success' && resultJson) {
-            // Parse the result to get audio URL
-            const parsed: ResultJson = JSON.parse(resultJson)
-            if (parsed.resultUrls && parsed.resultUrls.length > 0) {
-                return parsed.resultUrls[0]
+            if (result.code !== 200) {
+                throw new EngineError('gemini', `Kie.ai poll failed (code ${result.code}): ${result.msg}`, {
+                    status: Number(result.code) || undefined, phase: 'poll',
+                })
             }
-            throw new Error('No audio URL in result')
+
+            consecutiveErrors = 0
+            const { state, resultJson, failMsg, failCode } = result.data
+
+            if (state === 'success' && resultJson) {
+                let parsed: ResultJson
+                try {
+                    parsed = JSON.parse(resultJson)
+                } catch {
+                    throw new EngineError('gemini', 'Kie.ai returned an unreadable result', { phase: 'poll', final: true })
+                }
+                if (parsed.resultUrls && parsed.resultUrls.length > 0) {
+                    return parsed.resultUrls[0]
+                }
+                throw new EngineError('gemini', 'Kie.ai returned no audio URL', { phase: 'poll', final: true })
+            }
+
+            if (state === 'fail') {
+                // The task itself failed: a final answer, not a hiccup.
+                throw new EngineError('gemini', `TTS generation failed: ${failMsg || failCode || 'Unknown error'}`, {
+                    status: Number(failCode) || undefined, phase: 'poll', final: true,
+                })
+            }
+        } catch (err) {
+            if (err instanceof EngineError && err.final) throw err
+            // Network hiccup, timeout or an error answer on ONE status check.
+            consecutiveErrors++
+            lastError = err instanceof EngineError
+                ? err
+                : new EngineError('gemini', `Kie.ai poll failed: ${err instanceof Error ? err.message : String(err)}`, { phase: 'poll' })
+            if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) throw lastError
         }
 
-        if (state === 'fail') {
-            console.error('[Kie.ai] Task failed:', failCode, failMsg)
-            throw new Error(`TTS generation failed: ${failMsg || failCode || 'Unknown error'}`)
-        }
-
-        // Still processing, wait and poll again
+        // Still processing (or recovering from a hiccup): wait and poll again
         await new Promise(resolve => setTimeout(resolve, pollInterval))
     }
 
-    throw new Error(`TTS generation timed out after ${ENGINE_LIMITS.gemini.pollTimeoutMs / 1000} seconds`)
+    throw new EngineError('gemini', `TTS generation timed out after ${Math.round((Date.now() - started) / 1000)} seconds`, {
+        phase: 'poll',
+    })
 }
 
 /**
@@ -248,22 +293,27 @@ async function pollTaskStatus(taskId: string): Promise<string> {
  * Creates task, polls for completion, returns audio buffer (WAV)
  */
 export async function generateTTS(params: KieAITTSParams): Promise<ArrayBuffer> {
+    const deadline = Date.now()
+        + (params.timeoutMs ?? CREATE_TIMEOUT_MS + ENGINE_LIMITS.gemini.pollTimeoutMs + DOWNLOAD_TIMEOUT_MS)
+
     // 1. Create the task
-    const taskId = await createTask(params)
+    const taskId = await createTask(params, deadline)
 
     // 2. Poll for completion and get audio URL
-    const audioUrl = await pollTaskStatus(taskId)
+    const audioUrl = await pollTaskStatus(taskId, deadline)
 
     // 3. Download the audio
-    const audioResponse = await fetch(audioUrl)
+    const audioResponse = await fetch(audioUrl, { signal: AbortSignal.timeout(timeLeft(deadline, DOWNLOAD_TIMEOUT_MS)) })
     if (!audioResponse.ok) {
-        throw new Error(`Failed to download audio: ${audioResponse.status}`)
+        throw new EngineError('gemini', `Kie.ai audio download failed (HTTP ${audioResponse.status})`, {
+            status: audioResponse.status, phase: 'download',
+        })
     }
 
     const audioBuffer = await audioResponse.arrayBuffer()
 
     if (!audioBuffer || audioBuffer.byteLength === 0) {
-        throw new Error('Empty audio response')
+        throw new EngineError('gemini', 'Kie.ai returned empty audio', { phase: 'download' })
     }
 
     return audioBuffer

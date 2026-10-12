@@ -262,7 +262,9 @@ export const TextToSpeech: React.FC<TextToSpeechProps> = ({ onNavigate, isMobile
                   }, 3000);
                 }
             } else {
-                showToast('Generation failed. Please try again.', 'error');
+                // Show what actually happened. Every failure used to read
+                // "Generation failed. Please try again.", whatever the cause.
+                showToast(result?.message || 'Generation failed. Please try again.', 'error', 9000);
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : 'Generation failed. Please try again.';

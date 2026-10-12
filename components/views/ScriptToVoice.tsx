@@ -7,12 +7,12 @@ import {
     Lock, ArrowRight, RotateCcw, Square, Volume2,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { useBatchGenerate, BatchStatus } from '@/hooks/useBatchGenerate';
+import { useBatchGenerate, BatchStatus, tooManyPartsMessage } from '@/hooks/useBatchGenerate';
 import { useVoices } from '@/hooks/useVoices';
 import { VoiceDropdown } from '@/components/ui/VoiceDropdown';
 import { chunkText } from '@/lib/text-chunker';
 import { isReliableForLongForm } from '@/lib/voices-data';
-import { CREDITS_CONFIG } from '@/lib/constants';
+import { CREDITS_CONFIG, SCRIPT_TO_VOICE_MAX_PARTS } from '@/lib/constants';
 import { getTierPermissions } from '@/lib/pricing';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
@@ -122,6 +122,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
     const plan = scriptText.trim() ? getChunkPlan(scriptText, currentVoice?.id) : null;
     const totalCredits = plan ? plan.totalCredits * CREDITS_CONFIG.COST_PER_CHARACTER : 0;
     const hasEnoughCredits = (profile?.remainingCredits || 0) >= totalCredits;
+    const tooManyParts = !!plan && plan.chunks.length > SCRIPT_TO_VOICE_MAX_PARTS;
     const isGenerating = ['chunking', 'generating', 'stitching'].includes(progress.status);
 
     // File upload handler
@@ -443,11 +444,21 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                         </div>
                     )}
 
+                    {/* Too long to join into one file — refused before anything is charged */}
+                    {tooManyParts && !isGenerating && progress.status !== 'complete' && (
+                        <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 px-4 py-3 rounded-xl">
+                            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                            <span>
+                                {tooManyPartsMessage(plan?.chunks.length ?? 0, currentVoice?.id ?? '', currentVoice?.name)}
+                            </span>
+                        </div>
+                    )}
+
                     {/* Generate Button */}
                     {!isGenerating && progress.status !== 'complete' && scriptText.trim() && (
                         <button
                             onClick={handleGenerate}
-                            disabled={!currentVoice || !hasEnoughCredits || scriptText.trim().length < 10}
+                            disabled={!currentVoice || !hasEnoughCredits || tooManyParts || scriptText.trim().length < 10}
                             className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold text-sm hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                         >
                             <Sparkles className="w-4 h-4" />
@@ -567,8 +578,10 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                         Generation stopped at part {progress.partial.chunkNumber} of {progress.partial.totalChunks}.
                                     </p>
                                     <p className="text-sm text-amber-800 mt-1">
-                                        The audio below covers your script up to that point and is yours to keep.
-                                        You were not charged for the parts that did not generate.
+                                        The audio below covers your script up to that point and is yours to keep.{' '}
+                                        {progress.partial.refundFailed
+                                            ? 'The part that failed could not be refunded automatically; our team has been alerted and will restore those credits.'
+                                            : 'You were not charged for the parts that did not generate.'}{' '}
                                         Reason: {progress.partial.message}
                                     </p>
                                 </div>
@@ -654,7 +667,8 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                     <p className="text-sm text-gray-600 mt-2">
                                         {progress.completedChunks} of {progress.totalChunks} chunks completed.
                                         {progress.totalCreditsUsed > 0 && ` ${progress.totalCreditsUsed.toLocaleString()} credits were used for completed chunks.`}
-                                        {progress.status === 'error' && ' Failed chunk credits were automatically refunded.'}
+                                        {progress.status === 'error' && progress.chunkResults.some(r => r.status === 'failed' && (r.refunded ?? 0) > 0) && ' The part that failed was refunded automatically.'}
+                                        {progress.status === 'error' && progress.chunkResults.some(r => r.status === 'failed' && r.refundFailed) && ' The failed part could not be refunded automatically; our team has been alerted and will restore those credits.'}
                                         {progress.status === 'cancelled' && ' A chunk that was already generating when you cancelled may still complete and be charged. Completed chunk audio is saved in your History. Remaining chunks were not generated or charged.'}
                                     </p>
                                     <button

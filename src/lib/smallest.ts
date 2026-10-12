@@ -14,7 +14,11 @@
 //   4,707 chars -> 30/30             100%
 // Their docs say "max ~250 chars recommended"; that is guidance, not a limit.
 // Nothing truncated at any size tested, unlike Gemini.
+//
+// An empty account is reported as HTTP 400 {"error":"Credits exhausted.
+// Please recharge."}, not 402. lib/tts-errors.ts classifies it by wording.
 // ===========================================
+import { EngineError } from './tts-errors'
 
 export const SMALLEST_BASE_URL = 'https://api.smallest.ai/waves/v1'
 
@@ -31,17 +35,23 @@ export const SMALLEST_OUTPUT_FORMAT = {
 // audible difference — the storage blow-up is still recent history.
 const SAMPLE_RATE = 24000
 
+// A 2,000-character request takes ~19s, ~45s on a slow day. The route passes
+// the time left in its own budget; this default only applies to other callers.
+const DEFAULT_TIMEOUT_MS = 55_000
+
 export interface SmallestTTSParams {
     text: string
     voiceId: string
     speed?: number      // 0.5 - 2.0, default 1.0
     language?: string   // ISO code; defaults to English
+    /** Give up after this long, so the caller can still refund and answer. */
+    timeoutMs?: number
 }
 
 export async function generateSmallestTTS(params: SmallestTTSParams): Promise<ArrayBuffer> {
     const apiKey = process.env.SMALLEST_API_KEY
     if (!apiKey) {
-        throw new Error('Missing SMALLEST_API_KEY environment variable')
+        throw new EngineError('smallest', 'Missing SMALLEST_API_KEY environment variable')
     }
 
     const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -64,20 +74,22 @@ export async function generateSmallestTTS(params: SmallestTTSParams): Promise<Ar
             speed,
             language: params.language || 'en',
         }),
+        signal: AbortSignal.timeout(params.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     })
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => '')
-        console.error('[Smallest] TTS HTTP Error:', response.status, errorText)
-        throw new Error(
-            `Smallest.ai TTS failed (HTTP ${response.status}): ${errorText || response.statusText}`,
+        throw new EngineError(
+            'smallest',
+            `Smallest.ai TTS failed (HTTP ${response.status}): ${errorText.slice(0, 400) || response.statusText}`,
+            { status: response.status },
         )
     }
 
     const audioBuffer = await response.arrayBuffer()
 
     if (!audioBuffer || audioBuffer.byteLength < 500) {
-        throw new Error('Smallest.ai returned empty or invalid audio')
+        throw new EngineError('smallest', 'Smallest.ai returned empty or invalid audio')
     }
 
     return audioBuffer

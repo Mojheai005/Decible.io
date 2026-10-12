@@ -5,7 +5,9 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { usePayment } from '@/hooks/usePayment';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Loader2, Check, Crown, ArrowRight, Star, Users, Sparkles, Zap, Shield } from 'lucide-react';
-import { SUBSCRIPTION_PLANS, getCurrencySymbol, getPlanPrice, getPlanYearlyPrice, getPlanFirstMonthPrice } from '@/lib/pricing';
+import { SUBSCRIPTION_PLANS, TOPUP_PACKAGES, getCurrencySymbol, getPlanPrice, getPlanYearlyPrice, getPlanFirstMonthPrice } from '@/lib/pricing';
+// '@/components/*' resolves to the root components/ folder, so this lives by path.
+import { TopupSection } from '../../src/components/pricing/TopupSection';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface SubscriptionProps {
@@ -15,7 +17,7 @@ interface SubscriptionProps {
 export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
     const isMobile = useIsMobile();
     const { profile, isLoading } = useUserProfile();
-    const { initiatePayment, isProcessing, processingPlanId, error } = usePayment();
+    const { initiatePayment, isProcessing, processingPlanId, error, success } = usePayment();
     const currency = useCurrency();
     const sym = getCurrencySymbol(currency);
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
@@ -91,8 +93,14 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
             </div>
 
             {error && (
-                <div className={`bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm ${isMobile ? 'p-3 mb-4' : 'p-4 mb-6'}`}>
+                <div role="alert" className={`bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm ${isMobile ? 'p-3 mb-4' : 'p-4 mb-6'}`}>
                     {error}
+                </div>
+            )}
+
+            {success && !error && (
+                <div role="status" className={`bg-green-50 border border-green-200 rounded-xl text-green-800 text-sm ${isMobile ? 'p-3 mb-4' : 'p-4 mb-6'}`}>
+                    {success}
                 </div>
             )}
 
@@ -267,6 +275,24 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
                         </div>
                     );
                 })}
+            </div>
+
+            {/* Credit top-ups. This section existed but was never shown, so no
+                top-up was ever sold: a paid user who ran out of credits could
+                only buy a bigger plan, and someone on Advanced could buy nothing. */}
+            <div className={isMobile ? 'mt-8' : 'mt-12'}>
+                {currentTier !== 'free' ? (
+                    <TopupSection
+                        currentTier={currentTier}
+                        packages={TOPUP_PACKAGES}
+                        onSelectPackage={(packageId) => initiatePayment(packageId, 'topup')}
+                        loading={isProcessing}
+                    />
+                ) : (
+                    <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 text-center text-sm text-gray-600">
+                        Need more credits without changing plan? Credit top-ups are available on every paid plan.
+                    </div>
+                )}
             </div>
 
             {/* FAQ Section */}
