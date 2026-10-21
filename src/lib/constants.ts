@@ -169,6 +169,23 @@ export type TTSEngine = keyof typeof ENGINE_LIMITS
 // Gemini voice, 75,000 on Fish and 100,000 on Smallest.
 export const SCRIPT_TO_VOICE_MAX_PARTS = 50
 
+// The joined file is ONE object in Supabase Storage, and the project's
+// per-file limit is 50 MB: of 936 joins in the 45 days to 16 Oct 2026 none was
+// larger, and a 39-part, 77 MB voiceover failed at the very last step after
+// all 39 parts had been charged. Kept a little under the limit. If the
+// Supabase file size limit is raised, raise this with it.
+export const MAX_JOINED_FILE_BYTES = 45 * 1024 * 1024
+
+// Bytes of finished audio per character of script at normal speed, measured
+// on 25 production parts per engine on 21 Oct 2026 (median / highest seen):
+// Smallest MP3 950 / 1,085, Fish MP3 942 / 1,126, Gemini WAV 2,958 / 4,491.
+// Set near the high end so a script that passes the check can be joined.
+export const JOINED_BYTES_PER_CHAR = {
+    smallest: 1_100,
+    fish: 1_150,
+    gemini: 3_800,
+} as const
+
 // Used when the engine is unknown — the conservative (Gemini) ceiling.
 export const DEFAULT_MAX_CHARS_PER_REQUEST = ENGINE_LIMITS.gemini.maxCharsPerRequest
 

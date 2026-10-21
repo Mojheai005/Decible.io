@@ -2,8 +2,8 @@
 // AUDIO STITCHER — Concatenate audio chunks into one file
 // WAV (Gemini TTS output): parse RIFF chunks, concatenate the
 //   PCM data sections, and write a single new header.
-// MP3 (legacy fallback): frames are self-contained, so same-bitrate
-//   files can be concatenated by byte appending (ID3 tags stripped).
+// MP3 (Fish, Smallest): frames are self-contained, but each part opens
+//   with a frame stating its own length; see lib/mp3-join.
 // ===========================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,6 +11,8 @@ import { createClient } from '@/lib/supabase/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { TTS_OUTPUT_FORMAT } from '@/lib/kieai';
 import { SCRIPT_TO_VOICE_MAX_PARTS } from '@/lib/constants';
+import { joinMp3Parts } from '@/lib/mp3-join';
+import { logger } from '@/lib/logger';
 
 export const maxDuration = 120;
 
@@ -110,28 +112,6 @@ function concatenateWavs(wavs: WavInfo[]): Buffer {
     return Buffer.concat([header, ...wavs.map(w => w.data)]);
 }
 
-/**
- * Strip ID3v2 header from MP3 buffer (if present).
- * ID3v2 tags at the start of intermediate chunks cause playback glitches.
- * First chunk keeps its tag, subsequent chunks are stripped.
- */
-function stripID3v2Header(buffer: Buffer): Buffer {
-    // ID3v2 starts with "ID3"
-    if (buffer.length >= 10 && buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) {
-        // Size is encoded as 4 syncsafe bytes at offset 6
-        const size =
-            ((buffer[6] & 0x7f) << 21) |
-            ((buffer[7] & 0x7f) << 14) |
-            ((buffer[8] & 0x7f) << 7) |
-            (buffer[9] & 0x7f);
-        const headerSize = 10 + size;
-        if (headerSize < buffer.length) {
-            return buffer.subarray(headerSize);
-        }
-    }
-    return buffer;
-}
-
 export async function POST(request: NextRequest) {
     try {
         // 1. Authenticate user
@@ -157,6 +137,19 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Only the caller's own saved parts. This route used to download any
+        // address the browser sent it.
+        const admin = getAdminClient();
+        const ownFolder = admin.storage.from('audio-generations').getPublicUrl(`${user.id}/`).data.publicUrl;
+        // Compare the normalised address, so "/../" cannot step outside the folder.
+        const isOwnPart = (url: unknown) => {
+            if (typeof url !== 'string') return false;
+            try { return new URL(url).href.startsWith(ownFolder) && !/%2e%2e|\.\./i.test(url); } catch { return false; }
+        };
+        if (!audioUrls.every(isOwnPart)) {
+            return NextResponse.json({ error: 'These audio parts do not belong to your account.' }, { status: 400 });
+        }
+
         // 3. Fetch all audio buffers in parallel
         const bufferPromises = audioUrls.map(async (url, index) => {
             const response = await fetch(url);
@@ -180,16 +173,17 @@ export async function POST(request: NextRequest) {
             extension = TTS_OUTPUT_FORMAT.extension;
             contentType = TTS_OUTPUT_FORMAT.mimeType;
         } else {
-            const parts: Buffer[] = buffers.map((buf, i) =>
-                i === 0 ? buf : stripID3v2Header(buf)
-            );
-            concatenated = Buffer.concat(parts);
+            const joined = joinMp3Parts(buffers);
+            concatenated = joined.file;
             extension = 'mp3';
             contentType = 'audio/mpeg';
+            const unparsed = joined.stats.filter(s => s.coverage < 0.9).length;
+            if (unparsed) {
+                logger.warn('Joined MP3 parts that did not parse as frames', { event: 's2v.mp3_unparsed', userId: user.id, parts: buffers.length, unparsed });
+            }
         }
 
         // 5. Upload stitched audio to Supabase Storage
-        const admin = getAdminClient();
         const stitchId = `stitch_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const filePath = `${user.id}/${stitchId}.${extension}`;
 
@@ -201,8 +195,21 @@ export async function POST(request: NextRequest) {
             });
 
         if (uploadError) {
-            console.error('Failed to upload stitched audio:', uploadError);
-            return NextResponse.json({ error: 'Failed to store stitched audio' }, { status: 500 });
+            const tooLarge = /maximum allowed size|too large|413/i.test(`${uploadError.message} ${(uploadError as { statusCode?: string }).statusCode ?? ''}`);
+            logger.error('Could not store the joined voiceover', undefined, {
+                event: 's2v.join_store_failed', userId: user.id, parts: audioUrls.length,
+                bytes: concatenated.length, tooLarge, detail: uploadError.message,
+            });
+            return NextResponse.json(
+                tooLarge
+                    ? {
+                        error: `The finished voiceover (${(concatenated.length / 1e6).toFixed(0)} MB) is larger than we can save as one file. `
+                            + 'Every part is saved; split the script into two runs.',
+                        code: 'too_large',
+                    }
+                    : { error: 'Failed to store stitched audio', code: 'storage' },
+                { status: tooLarge ? 413 : 500 },
+            );
         }
 
         const { data: urlData } = admin.storage
@@ -236,7 +243,7 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
         const msg = error instanceof Error ? error.message : 'Stitch failed';
-        console.error('Stitch error:', msg, error);
+        logger.error('Joining voiceover parts failed', error instanceof Error ? error : undefined, { event: 's2v.join_failed', detail: msg });
         return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

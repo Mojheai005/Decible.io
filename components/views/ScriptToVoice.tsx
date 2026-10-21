@@ -7,12 +7,13 @@ import {
     Lock, ArrowRight, RotateCcw, Square, Volume2,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { useBatchGenerate, BatchStatus, tooManyPartsMessage } from '@/hooks/useBatchGenerate';
+import { useBatchGenerate, BatchStatus } from '@/hooks/useBatchGenerate';
 import { useVoices } from '@/hooks/useVoices';
 import { VoiceDropdown } from '@/components/ui/VoiceDropdown';
 import { chunkText } from '@/lib/text-chunker';
 import { isReliableForLongForm } from '@/lib/voices-data';
-import { CREDITS_CONFIG, SCRIPT_TO_VOICE_MAX_PARTS } from '@/lib/constants';
+import { CREDITS_CONFIG } from '@/lib/constants';
+import { scriptLimitMessage } from '@/lib/script-to-voice';
 import { getTierPermissions } from '@/lib/pricing';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
@@ -20,11 +21,71 @@ interface ScriptToVoiceProps {
     onNavigate?: (view: string) => void;
 }
 
+/** A finished voiceover from the server's history, so it survives a refresh. */
+interface SavedVoiceover {
+    id: string;
+    date: string;
+    voiceName: string;
+    url: string;
+    parts?: number;
+    sizeMb?: number;
+}
+
+/**
+ * Download straight from storage (the link asks the server to send it as a
+ * file). The old way copied the whole file into browser memory and released
+ * it the moment the download started, which could fail, most of all for big
+ * voiceovers and on phones.
+ */
+function downloadAudio(url: string, name: string) {
+    const extension = url.split('?')[0].split('.').pop() || 'mp3';
+    const filename = `${name.replace(/[^\w\- ]+/g, '').trim() || 'script'}-voiceover.${extension}`;
+    try {
+        const link = new URL(url);
+        link.searchParams.set('download', filename);
+        const a = document.createElement('a');
+        a.href = link.toString();
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    } catch {
+        window.open(url, '_blank', 'noopener');
+    }
+}
+
 export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
     const isMobile = useIsMobile();
     const { profile } = useUserProfile();
     const { voices: apiVoices } = useVoices();
-    const { progress, generateBatch, getChunkPlan, cancel, resetProgress } = useBatchGenerate();
+    const { progress, generateBatch, getChunkPlan, cancel, resetProgress, continueRun, joinAgain } = useBatchGenerate();
+
+    // Finished voiceovers, from the server: they used to vanish on refresh.
+    const [savedVoiceovers, setSavedVoiceovers] = useState<SavedVoiceover[]>([]);
+    const [playingSavedId, setPlayingSavedId] = useState<string | null>(null);
+    const savedAudioRef = useRef<HTMLAudioElement | null>(null);
+    const loadSavedVoiceovers = useCallback(async () => {
+        try {
+            const res = await fetch('/api/user/history?type=voiceovers&limit=10');
+            if (!res.ok) return;
+            const data = await res.json();
+            setSavedVoiceovers((data.history || [])
+                .filter((h: { audioUrl?: string }) => h.audioUrl)
+                .map((h: { id: string; date: string; voiceName: string; audioUrl: string; settings?: { chunks?: number; totalSize?: number } }) => ({
+                    id: h.id,
+                    date: h.date,
+                    voiceName: h.voiceName,
+                    url: h.audioUrl,
+                    parts: h.settings?.chunks,
+                    sizeMb: h.settings?.totalSize ? h.settings.totalSize / 1e6 : undefined,
+                })));
+        } catch {
+            // The list is a convenience; the page works without it.
+        }
+    }, []);
+    useEffect(() => { loadSavedVoiceovers(); }, [loadSavedVoiceovers]);
+    useEffect(() => { if (progress.status === 'complete') loadSavedVoiceovers(); }, [progress.status, loadSavedVoiceovers]);
+    useEffect(() => () => { savedAudioRef.current?.pause(); }, []);
 
     // Script input
     const [scriptText, setScriptText] = useState('');
@@ -122,8 +183,16 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
     const plan = scriptText.trim() ? getChunkPlan(scriptText, currentVoice?.id) : null;
     const totalCredits = plan ? plan.totalCredits * CREDITS_CONFIG.COST_PER_CHARACTER : 0;
     const hasEnoughCredits = (profile?.remainingCredits || 0) >= totalCredits;
-    const tooManyParts = !!plan && plan.chunks.length > SCRIPT_TO_VOICE_MAX_PARTS;
+    // Too many parts, or a joined file too big to save: refused before charging.
+    const limitMessage = plan && currentVoice
+        ? scriptLimitMessage({ parts: plan.chunks.length, characters: plan.totalCredits, voiceId: currentVoice.id, voiceName: currentVoice.name, speed })
+        : null;
     const isGenerating = ['chunking', 'generating', 'stitching'].includes(progress.status);
+    const savedParts = progress.chunkResults.filter(r => r.status === 'complete' && r.audioUrl);
+    const canContinue = progress.resumeFrom !== null;
+    const continueLabel = savedParts.length > 0 && progress.resumeFrom !== null
+        ? `Continue from part ${progress.resumeFrom + 1}`
+        : 'Try again';
 
     // File upload handler
     const handleFileUpload = async (file: File) => {
@@ -209,20 +278,25 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
         }
     };
 
-    const handleDownload = async () => {
+    const handleDownload = () => {
         if (!progress.finalAudioUrl) return;
-        try {
-            const res = await fetch(progress.finalAudioUrl);
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${currentVoice?.name || 'script'}-voiceover.${progress.finalAudioUrl.split('.').pop()?.split('?')[0] || 'wav'}`;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch {
-            alert('Download failed');
+        downloadAudio(progress.finalAudioUrl, currentVoice?.name || 'script');
+    };
+
+    const toggleSavedVoiceover = (item: SavedVoiceover) => {
+        if (!savedAudioRef.current) {
+            savedAudioRef.current = new Audio();
+            savedAudioRef.current.addEventListener('ended', () => setPlayingSavedId(null));
         }
+        const audio = savedAudioRef.current;
+        if (playingSavedId === item.id) {
+            audio.pause();
+            setPlayingSavedId(null);
+            return;
+        }
+        audio.src = item.url;
+        audio.play().catch(() => setPlayingSavedId(null));
+        setPlayingSavedId(item.id);
     };
 
     const formatTime = (s: number) => {
@@ -445,12 +519,10 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                     )}
 
                     {/* Too long to join into one file — refused before anything is charged */}
-                    {tooManyParts && !isGenerating && progress.status !== 'complete' && (
+                    {limitMessage && !isGenerating && progress.status !== 'complete' && (
                         <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 px-4 py-3 rounded-xl">
                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                            <span>
-                                {tooManyPartsMessage(plan?.chunks.length ?? 0, currentVoice?.id ?? '', currentVoice?.name)}
-                            </span>
+                            <span>{limitMessage}</span>
                         </div>
                     )}
 
@@ -458,7 +530,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                     {!isGenerating && progress.status !== 'complete' && scriptText.trim() && (
                         <button
                             onClick={handleGenerate}
-                            disabled={!currentVoice || !hasEnoughCredits || tooManyParts || scriptText.trim().length < 10}
+                            disabled={!currentVoice || !hasEnoughCredits || !!limitMessage || scriptText.trim().length < 10}
                             className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold text-sm hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                         >
                             <Sparkles className="w-4 h-4" />
@@ -623,6 +695,15 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                             </div>
 
                             {/* Actions */}
+                            {progress.partial && canContinue && (
+                                <button
+                                    onClick={() => { continueRun(); }}
+                                    className="w-full flex items-center justify-center gap-2 py-3 bg-amber-600 text-white rounded-xl font-semibold text-sm hover:bg-amber-700 transition-colors"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                    {continueLabel} (you only pay for the parts still missing)
+                                </button>
+                            )}
                             <div className="flex gap-3">
                                 <button
                                     onClick={handleDownload}
@@ -664,20 +745,95 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                     {progress.error && (
                                         <p className="text-sm text-red-700 mt-1">{progress.error}</p>
                                     )}
-                                    <p className="text-sm text-gray-600 mt-2">
-                                        {progress.completedChunks} of {progress.totalChunks} chunks completed.
-                                        {progress.totalCreditsUsed > 0 && ` ${progress.totalCreditsUsed.toLocaleString()} credits were used for completed chunks.`}
-                                        {progress.status === 'error' && progress.chunkResults.some(r => r.status === 'failed' && (r.refunded ?? 0) > 0) && ' The part that failed was refunded automatically.'}
-                                        {progress.status === 'error' && progress.chunkResults.some(r => r.status === 'failed' && r.refundFailed) && ' The failed part could not be refunded automatically; our team has been alerted and will restore those credits.'}
-                                        {progress.status === 'cancelled' && ' A chunk that was already generating when you cancelled may still complete and be charged. Completed chunk audio is saved in your History. Remaining chunks were not generated or charged.'}
-                                    </p>
-                                    <button
-                                        onClick={resetProgress}
-                                        className="mt-3 px-4 py-2 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50"
-                                    >
-                                        Try Again
-                                    </button>
+                                    {progress.totalChunks > 0 && (
+                                        <p className="text-sm text-gray-600 mt-2">
+                                            {savedParts.length} of {progress.totalChunks} parts made.
+                                            {progress.totalCreditsUsed > 0 && ` ${progress.totalCreditsUsed.toLocaleString()} credits were used for the parts made.`}
+                                            {progress.status === 'error' && progress.chunkResults.some(r => r.status === 'failed' && (r.refunded ?? 0) > 0) && ' The part that failed was refunded automatically.'}
+                                            {progress.status === 'error' && progress.chunkResults.some(r => r.status === 'failed' && r.refundFailed) && ' The failed part could not be refunded automatically; our team has been alerted and will restore those credits.'}
+                                            {progress.status === 'cancelled' && ' Nothing more was generated or charged.'}
+                                        </p>
+                                    )}
+
+                                    {/* Parts already paid for stay downloadable, whatever failed after them */}
+                                    {savedParts.length > 0 && !progress.finalAudioUrl && (
+                                        <div className="mt-3">
+                                            <p className="text-xs font-medium text-gray-700 mb-1.5">Your saved parts (already paid for):</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {savedParts.map(part => (
+                                                    <button
+                                                        key={part.index}
+                                                        onClick={() => downloadAudio(part.audioUrl as string, `${currentVoice?.name || 'script'}-part-${part.index + 1}`)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 hover:bg-gray-50"
+                                                    >
+                                                        <Download className="w-3 h-3" />
+                                                        Part {part.index + 1}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {progress.joinRetryable && (
+                                            <button
+                                                onClick={() => { joinAgain(); }}
+                                                className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+                                            >
+                                                Join again (no extra credits)
+                                            </button>
+                                        )}
+                                        {canContinue && (
+                                            <button
+                                                onClick={() => { continueRun(); }}
+                                                className={`px-4 py-2 rounded-lg text-sm font-medium ${progress.joinRetryable ? 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
+                                            >
+                                                {continueLabel}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={resetProgress}
+                                            className="px-4 py-2 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50"
+                                        >
+                                            Start over
+                                        </button>
+                                    </div>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Finished voiceovers, kept on the server */}
+                    {!isGenerating && savedVoiceovers.length > 0 && (
+                        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                            <h3 className="font-semibold text-gray-900 text-sm mb-3">Your recent voiceovers</h3>
+                            <div className="divide-y divide-gray-100">
+                                {savedVoiceovers.map(item => (
+                                    <div key={item.id || item.url} className="flex items-center gap-3 py-2.5">
+                                        <button
+                                            onClick={() => toggleSavedVoiceover(item)}
+                                            aria-label={playingSavedId === item.id ? 'Pause' : 'Play'}
+                                            className="w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-800 shrink-0"
+                                        >
+                                            {playingSavedId === item.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm text-gray-800 truncate">{item.voiceName}</div>
+                                            <div className="text-xs text-gray-500">
+                                                {new Date(item.date).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                {item.parts ? ` · ${item.parts} parts` : ''}
+                                                {item.sizeMb ? ` · ${item.sizeMb.toFixed(1)} MB` : ''}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => downloadAudio(item.url, item.voiceName)}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 shrink-0"
+                                        >
+                                            <Download className="w-3.5 h-3.5" />
+                                            Download
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}

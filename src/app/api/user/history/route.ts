@@ -23,15 +23,21 @@ export async function GET(request: Request) {
         }
 
         const { searchParams } = new URL(request.url);
-        const limit = parseInt(searchParams.get('limit') || '50', 10);
+        const requested = parseInt(searchParams.get('limit') || '50', 10);
+        const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 100) : 50;
+        // ?type=voiceovers lists only joined Script to Voice files, which
+        // otherwise disappeared from view once the page was refreshed.
+        const voiceoversOnly = searchParams.get('type') === 'voiceovers';
 
         const admin = getAdminClient();
 
         // Fetch history from Supabase generation_history table
-        const { data: historyData, error } = await admin
+        let query = admin
             .from('generation_history')
             .select('id, text, voice_id, voice_name, audio_url, characters_used, credits_used, settings, status, created_at')
-            .eq('user_id', user.id)
+            .eq('user_id', user.id);
+        if (voiceoversOnly) query = query.eq('voice_id', 'batch');
+        const { data: historyData, error } = await query
             .order('created_at', { ascending: false })
             .limit(limit);
 
