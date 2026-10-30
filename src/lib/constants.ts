@@ -207,12 +207,21 @@ export const ENGINE_MS_PER_CHAR = {
     smallest: 9.7,
 } as const
 
-// Wall-clock budget for one TTS request. Vercel Hobby kills a function at 60s
-// regardless of `maxDuration`, and a killed function never reaches the refund —
-// that is exactly how 10 users were charged and given nothing. 55s leaves room
-// to upload the audio and answer. Retrying is only allowed while the estimated
-// next attempt still fits inside what remains.
-export const FUNCTION_BUDGET_MS = 55_000
+// Wall-clock budget for one TTS request. Retrying is only allowed while the
+// estimated next attempt still fits inside what remains, so a request always
+// ends in time to upload the audio or refund the credits.
+//
+// History: this was 55 s because functions were once killed at 60 s (10 users
+// charged and given nothing, Sept 2026). Production no longer does that: in
+// October requests ran for 180 s and still refunded, and the route allows
+// 300 s (`maxDuration`). At 55 s, Gemini jobs that Kie.ai finishes in 60-120 s
+// under load were being cut off (41 failures, 23-30 Oct). 170 s keeps over two
+// minutes of headroom below 300 s.
+export const FUNCTION_BUDGET_MS = 170_000
+
+// Smallest and Fish answer in seconds; one stuck call should not hold the
+// whole budget, so their single attempts stop at 60 s and can be retried.
+export const FAST_ENGINE_ATTEMPT_MS = 60_000
 
 // Backoff for CAPACITY errors — a provider concurrency cap, not a blip.
 //

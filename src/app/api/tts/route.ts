@@ -8,6 +8,7 @@ import {
     ENGINE_LIMITS,
     ENGINE_MS_PER_CHAR,
     FUNCTION_BUDGET_MS,
+    FAST_ENGINE_ATTEMPT_MS,
     CAPACITY_RETRY_DELAYS_MS,
     TRANSIENT_RETRY_DELAYS_MS,
     RETRY_JITTER_RATIO,
@@ -20,6 +21,7 @@ import { checkUserRateLimit, getRateLimitHeaders, TIER_RATE_LIMITS } from '@/lib
 import { logger } from '@/lib/logger';
 import { alertOps } from '@/lib/alerts';
 import { ClassifiedFailure, classifyEngineFailure, failureFor, shortReason } from '@/lib/tts-errors';
+import { autoJoinRun, parseScriptRun } from '@/lib/stitch';
 
 // Extend Vercel serverless function timeout to the project's fluid-compute limit.
 // Must comfortably exceed worst-case Kie polling + audio download + storage
@@ -433,10 +435,14 @@ export async function POST(request: NextRequest) {
 
         // 3. Parse request body
         const body = await request.json().catch(() => null);
-        const { text, voice_id, voice_name, voice_settings } = (body ?? {}) as {
+        const { text, voice_id, voice_name, voice_settings, script_run } = (body ?? {}) as {
             text?: string; voice_id?: string; voice_name?: string;
             voice_settings?: { stability?: number; similarity_boost?: number; style?: number; speed?: number };
+            script_run?: unknown;
         };
+        // Script to Voice tags each part with its run, so the server can join
+        // the run itself if the page is gone by the time the last part is made.
+        const scriptRun = parseScriptRun(script_run);
 
         if (!text || !voice_id) {
             return refuse(400, {
@@ -574,8 +580,9 @@ export async function POST(request: NextRequest) {
             const attemptStarted = Date.now();
             let candidate: ArrayBuffer;
             try {
+                const remaining = FUNCTION_BUDGET_MS - (attemptStarted - requestStartedAt);
                 candidate = await runEngine(
-                    Math.max(MIN_ATTEMPT_MS, FUNCTION_BUDGET_MS - (attemptStarted - requestStartedAt)),
+                    Math.max(MIN_ATTEMPT_MS, engine === 'gemini' ? remaining : Math.min(remaining, FAST_ENGINE_ATTEMPT_MS)),
                 );
             } catch (genError) {
                 const failure = classifyEngineFailure(genError);
@@ -696,12 +703,19 @@ export async function POST(request: NextRequest) {
             stored.url,
             charactersUsed,
             creditsNeeded,
-            voice_settings || {}
+            { ...(voice_settings || {}), ...(scriptRun ? { scriptRun } : {}) }
         );
 
         logger.info('Generation completed', {
             event: 'tts.completed', generationId, ...logCtx, attempts, elapsedMs: elapsedMs(),
         });
+
+        // The last part of a Script to Voice run: if the page does not join
+        // the run (closed, refreshed, offline), the server will.
+        if (scriptRun && scriptRun.part === scriptRun.total - 1) {
+            const runVoiceName = voice_name || voiceNameForApi;
+            after(() => autoJoinRun(getAdminClient(), userId, scriptRun.id, scriptRun.total, runVoiceName));
+        }
 
         // 13. Return success response
         return NextResponse.json({

@@ -119,10 +119,14 @@ interface GenerateChunkParams {
     voiceId: string
     voiceName: string
     settings: VoiceSettings
+    /** Which run and part this is, so the server can join the run if the page cannot. */
+    scriptRun: { id: string; part: number; total: number }
 }
 
 /** One script's run, kept so it can be joined again or continued. */
 interface Run {
+    /** Sent with every part; the server joins a finished run by this id even if the page is gone. */
+    id: string
     chunks: TextChunk[]
     voiceId: string
     voiceName: string
@@ -131,6 +135,14 @@ interface Run {
     creditsUsed: number
     lastFailure: PartialInfo | null
     lastAborted: boolean
+}
+
+/** A UUID for a new run. */
+function newRunId(): string {
+    const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+    if (c?.randomUUID) return c.randomUUID()
+    const hex = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }
 
 /** What to tell the user about audio that covers only part of the script. */
@@ -189,6 +201,7 @@ export function useBatchGenerate() {
                 voice_id: params.voiceId,
                 voice_name: params.voiceName,
                 voice_settings: params.settings,
+                script_run: params.scriptRun,
             }),
         })
 
@@ -222,11 +235,11 @@ export function useBatchGenerate() {
     /**
      * Stitch all audio chunks into one file
      */
-    const stitchAudio = async (audioUrls: string[], voiceName: string): Promise<string> => {
+    const stitchAudio = async (audioUrls: string[], voiceName: string, runId: string): Promise<string> => {
         const response = await fetch('/api/script-to-voice/stitch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audioUrls, voiceName }),
+            body: JSON.stringify({ audioUrls, voiceName, runId }),
         })
 
         if (!response.ok) {
@@ -305,6 +318,7 @@ export function useBatchGenerate() {
                             voiceId: run.voiceId,
                             voiceName: run.voiceName,
                             settings: run.settings,
+                            scriptRun: { id: run.id, part: chunk.index, total: run.chunks.length },
                         })
                         lastErr = null
                         break
@@ -442,7 +456,7 @@ export function useBatchGenerate() {
 
         setProgress(prev => ({ ...prev, status: 'stitching', percentage: 92, error: null }))
         try {
-            return deliver(await stitchAudio(audioUrls, run.voiceName))
+            return deliver(await stitchAudio(audioUrls, run.voiceName, run.id))
         } catch (err) {
             const tooLarge = err instanceof JoinError && err.code === 'too_large'
             const message = err instanceof Error ? err.message : 'Stitch failed'
@@ -497,6 +511,7 @@ export function useBatchGenerate() {
         }
 
         const run: Run = {
+            id: newRunId(),
             chunks: plan.chunks,
             voiceId,
             voiceName,

@@ -31,6 +31,15 @@ interface SavedVoiceover {
     sizeMb?: number;
 }
 
+/** A run whose parts were made but never joined into one file. */
+interface UnfinishedRun {
+    runId: string;
+    voiceName: string;
+    totalParts: number;
+    partsReady: number;
+    lastPartAt: string;
+}
+
 /**
  * Download straight from storage (the link asks the server to send it as a
  * file). The old way copied the whole file into browser memory and released
@@ -83,8 +92,42 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
             // The list is a convenience; the page works without it.
         }
     }, []);
-    useEffect(() => { loadSavedVoiceovers(); }, [loadSavedVoiceovers]);
-    useEffect(() => { if (progress.status === 'complete') loadSavedVoiceovers(); }, [progress.status, loadSavedVoiceovers]);
+    // Runs whose parts were made but never joined (page closed before the last step).
+    const [unfinishedRuns, setUnfinishedRuns] = useState<UnfinishedRun[]>([]);
+    const [joiningRunId, setJoiningRunId] = useState<string | null>(null);
+    const [joinRunError, setJoinRunError] = useState<string | null>(null);
+    const loadUnfinishedRuns = useCallback(async () => {
+        try {
+            const res = await fetch('/api/script-to-voice/runs');
+            if (!res.ok) return;
+            const data = await res.json();
+            setUnfinishedRuns(data.unfinished || []);
+        } catch {
+            // The list is a convenience; the page works without it.
+        }
+    }, []);
+    const joinUnfinishedRun = async (run: UnfinishedRun) => {
+        setJoiningRunId(run.runId);
+        setJoinRunError(null);
+        try {
+            const res = await fetch('/api/script-to-voice/stitch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ runId: run.runId, voiceName: run.voiceName }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.audioUrl) throw new Error(data.error || 'Joining failed');
+            await Promise.all([loadSavedVoiceovers(), loadUnfinishedRuns()]);
+        } catch (err) {
+            setJoinRunError(err instanceof Error ? err.message : 'Joining failed');
+        } finally {
+            setJoiningRunId(null);
+        }
+    };
+    useEffect(() => { loadSavedVoiceovers(); loadUnfinishedRuns(); }, [loadSavedVoiceovers, loadUnfinishedRuns]);
+    useEffect(() => {
+        if (progress.status === 'complete' || progress.status === 'error') { loadSavedVoiceovers(); loadUnfinishedRuns(); }
+    }, [progress.status, loadSavedVoiceovers, loadUnfinishedRuns]);
     useEffect(() => () => { savedAudioRef.current?.pause(); }, []);
 
     // Script input
@@ -799,6 +842,38 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Parts made but never joined: join them, free, from what was saved */}
+                    {!isGenerating && unfinishedRuns.length > 0 && (
+                        <div className="bg-white rounded-2xl border border-amber-200 p-5">
+                            <h3 className="font-semibold text-gray-900 text-sm">Unfinished voiceovers</h3>
+                            <p className="text-xs text-gray-500 mt-1 mb-3">
+                                These parts were made and paid for, but were never joined into one file. Joining is free.
+                            </p>
+                            {joinRunError && <p className="text-xs text-red-600 mb-2">{joinRunError}</p>}
+                            <div className="divide-y divide-gray-100">
+                                {unfinishedRuns.map(run => (
+                                    <div key={run.runId} className="flex items-center gap-3 py-2.5">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm text-gray-800 truncate">{run.voiceName}</div>
+                                            <div className="text-xs text-gray-500">
+                                                {new Date(run.lastPartAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                {` · ${run.partsReady} of ${run.totalParts} parts made`}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => joinUnfinishedRun(run)}
+                                            disabled={joiningRunId !== null}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 disabled:bg-gray-300 shrink-0"
+                                        >
+                                            {joiningRunId === run.runId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                                            {run.partsReady < run.totalParts ? `Join the ${run.partsReady} parts` : 'Join into one file'}
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}
