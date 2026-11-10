@@ -191,27 +191,7 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
     const isLocked = !permissions.canBulkGenerate;
 
     if (isLocked) {
-        return (
-            <div className={`h-full flex items-center justify-center bg-[#FAFAFA] ${isMobile ? 'p-6' : 'p-12'}`}>
-                <div className="text-center max-w-md">
-                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                        <Lock className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-3">Script to Voice</h2>
-                    <p className="text-gray-500 mb-6">
-                        Convert entire scripts into professional voiceovers. Upload your script and get a single, ready-to-use audio file.
-                    </p>
-                    <button
-                        onClick={() => onNavigate?.('subscription')}
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
-                    >
-                        Upgrade to Creator Plan
-                        <ArrowRight className="w-4 h-4" />
-                    </button>
-                    <p className="text-xs text-gray-400 mt-3">Available on Creator, Pro, and Advanced plans</p>
-                </div>
-            </div>
-        );
+        return <ScriptToVoiceLocked credits={profile?.remainingCredits ?? null} isMobile={isMobile} onNavigate={onNavigate} />;
     }
 
     // Chunk preview
@@ -917,3 +897,85 @@ export const ScriptToVoice: React.FC<ScriptToVoiceProps> = ({ onNavigate }) => {
         </div>
     );
 };
+
+const PLAN_NAMES: Record<string, string> = { starter: 'Starter', creator: 'Creator', pro: 'Pro', advanced: 'Advanced' };
+
+/**
+ * Shown when the plan has no Script to Voice. If a plan that HAD it (a course Pro month,
+ * or a paid Creator/Pro month) has ended, say so plainly and that the credits are still
+ * there: people read a bare "upgrade" as their credits having been taken away.
+ */
+function ScriptToVoiceLocked({ credits, isMobile, onNavigate }: {
+    credits: number | null;
+    isMobile: boolean;
+    onNavigate?: (view: string) => void;
+}) {
+    const [lastPlan, setLastPlan] = useState<{ tier: string; endedAt: string; hadScriptToVoice: boolean } | null>(null);
+    useEffect(() => {
+        let alive = true;
+        fetch('/api/user/plan-history')
+            .then(res => (res.ok ? res.json() : null))
+            .then(data => { if (alive && data?.lastPlan) setLastPlan(data.lastPlan); })
+            .catch(() => { /* fall back to the general message */ });
+        return () => { alive = false; };
+    }, []);
+
+    const ended = lastPlan?.hadScriptToVoice ? lastPlan : null;
+    const endedName = ended ? (PLAN_NAMES[ended.tier] ?? ended.tier) : '';
+    const endedOn = ended
+        ? new Date(ended.endedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+        : '';
+    const creditsText = typeof credits === 'number' && credits > 0 ? credits.toLocaleString('en-IN') : null;
+
+    return (
+        <div className={`h-full flex items-center justify-center bg-[#FAFAFA] ${isMobile ? 'p-6' : 'p-12'}`}>
+            <div className="text-center max-w-md">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <Lock className="w-8 h-8 text-gray-400" />
+                </div>
+                {ended ? (
+                    <>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-3">Your {endedName} plan has ended</h2>
+                        <p className="text-gray-700 mb-2">
+                            You still have your {creditsText ? <b>{creditsText} credits</b> : 'credits'}. Nothing was taken away.
+                        </p>
+                        <p className="text-gray-500 mb-6">
+                            To use Script to Voice, upgrade your plan, as your {endedName} plan ended on {endedOn}.
+                            Text to Speech still works with your credits.
+                        </p>
+                    </>
+                ) : (
+                    <>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-3">Script to Voice</h2>
+                        <p className="text-gray-500 mb-6">
+                            Convert entire scripts into professional voiceovers. Upload your script and get a single, ready-to-use audio file.
+                        </p>
+                        {creditsText && (
+                            <p className="text-gray-700 mb-6">
+                                You have <b>{creditsText} credits</b>. To use them with Script to Voice, upgrade your plan.
+                            </p>
+                        )}
+                    </>
+                )}
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button
+                        onClick={() => onNavigate?.('subscription')}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
+                    >
+                        Upgrade your plan
+                        <ArrowRight className="w-4 h-4" />
+                    </button>
+                    {ended && (
+                        <button
+                            onClick={() => onNavigate?.('tts')}
+                            className="inline-flex items-center gap-2 px-6 py-3 bg-white text-gray-900 border border-gray-200 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
+                        >
+                            Use Text to Speech
+                        </button>
+                    )}
+                </div>
+                <p className="text-xs text-gray-400 mt-3">Script to Voice is included in the Creator, Pro and Advanced plans</p>
+            </div>
+        </div>
+    );
+}
