@@ -1,5 +1,6 @@
-// Password login with a signed cookie. One shared password; each person types their name,
-// which is stamped on every grant and escalation they make.
+// Password login with a signed cookie. One shared password for the whole team; anyone with the
+// URL and the password can log in, on as many devices at once as needed. People can type their name
+// in the dashboard (kept in their browser) so grants and escalations show who made them.
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -55,3 +56,6 @@ export async function requireStaff(): Promise<Staff | NextResponse> {
 
 /** Cleans a typed name for use in notes: letters, digits, spaces and . - only, max 40 chars. */
 export const cleanName = (s: string) => s.replace(/[^\p{L}\p{N} .\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 40)
+
+/** The name to record on an action: what the person typed in the dashboard, else "Team". */
+export const actorName = (typed: unknown, staff: Staff) => cleanName(String(typed ?? '')) || staff.name || 'Team'

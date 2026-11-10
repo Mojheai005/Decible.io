@@ -10,7 +10,13 @@ type Tab = 'lookup' | 'grant' | 'escalations'
 interface Req { email: string; n: number }
 type ApiResult<T> = { ok: boolean; data: T & { error?: string } }
 
+// Everyone shares one password, so each person's name lives in their own browser and is sent with
+// grants, escalations and notes for the record. Optional: blank means "Team".
+const NAME_KEY = 'dd_name'
+const savedName = () => { try { return localStorage.getItem(NAME_KEY) || '' } catch { return '' } }
+
 async function api<T>(url: string, body?: unknown, method?: string): Promise<ApiResult<T>> {
+    if (body && typeof body === 'object' && !Array.isArray(body)) body = { by: savedName(), ...body }
     const res = await fetch(url, body === undefined
         ? { method: method || 'GET' }
         : { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -22,8 +28,14 @@ async function api<T>(url: string, body?: unknown, method?: string): Promise<Api
     return { ok: res.ok, data }
 }
 
-export default function Dashboard({ staff }: { staff: string }) {
+export default function Dashboard() {
     const [tab, setTab] = useState<Tab>('lookup')
+    const [name, setName] = useState('')
+    useEffect(() => { setName(savedName()) }, [])
+    const changeName = (v: string) => {
+        setName(v)
+        try { localStorage.setItem(NAME_KEY, v.trim()) } catch { /* private window: name just isn't remembered */ }
+    }
     const [lookupReq, setLookupReq] = useState<Req | null>(null)
     const [grantReq, setGrantReq] = useState<Req | null>(null)
     const [escReq, setEscReq] = useState<Req | null>(null)
@@ -54,7 +66,10 @@ export default function Dashboard({ staff }: { staff: string }) {
             <div className="topbar">
                 <div className="brand">Decible Support</div>
                 <div className="who">
-                    <span>Signed in as <b>{staff}</b></span>
+                    <label className="row small" title="Saved in this browser and written on the grants and escalations you make">
+                        Your name
+                        <input value={name} onChange={e => changeName(e.target.value)} placeholder="optional, for records" maxLength={40} style={{ width: 170, padding: '5px 8px' }} />
+                    </label>
                     <button className="btn small" onClick={logout}>Log out</button>
                 </div>
             </div>

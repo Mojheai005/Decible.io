@@ -10,7 +10,7 @@ export default async function LoginPage() {
         <main className="wrap">
             <div className="login panel stack">
                 <h1 className="brand">Decible Support</h1>
-                <p className="muted">Internal dashboard. Ask the admin for the password.</p>
+                <p className="muted">Internal dashboard for the Decible team. Enter the team password.</p>
                 <LoginForm />
             </div>
         </main>

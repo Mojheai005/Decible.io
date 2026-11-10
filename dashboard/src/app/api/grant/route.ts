@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaff } from '@/lib/session'
+import { actorName, requireStaff } from '@/lib/session'
 import { executeGrant, moveGrant, planGrant } from '@/lib/grant'
 import { isEmail } from '@/lib/format'
 
@@ -20,15 +20,15 @@ export async function POST(req: NextRequest) {
         if (body.mode === 'check') return NextResponse.json(await planGrant(email))
         if (body.mode === 'grant') {
             const reason = String(body.reason ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)
-            const result = await executeGrant(email, staff.name, reason, body.confirmed === true)
-            console.log('grant', { by: staff.name, email, ok: result.ok, message: result.message })
+            const result = await executeGrant(email, actorName(body.by, staff), reason, body.confirmed === true)
+            console.log('grant', { by: actorName(body.by, staff), email, ok: result.ok, message: result.message })
             return NextResponse.json(result, { status: result.ok ? 200 : 409 })
         }
         if (body.mode === 'move') {
             const from = String(body.from ?? '').trim().toLowerCase()
             if (!isEmail(from)) return NextResponse.json({ error: 'Bad email to move from.' }, { status: 400 })
-            const result = await moveGrant(from, email, staff.name)
-            console.log('move grant', { by: staff.name, from, to: email, ok: result.ok, message: result.message })
+            const result = await moveGrant(from, email, actorName(body.by, staff))
+            console.log('move grant', { by: actorName(body.by, staff), from, to: email, ok: result.ok, message: result.message })
             return NextResponse.json(result, { status: result.ok ? 200 : 409 })
         }
         return NextResponse.json({ error: 'Unknown mode' }, { status: 400 })

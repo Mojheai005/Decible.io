@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaff } from '@/lib/session'
+import { actorName, requireStaff } from '@/lib/session'
 import { list, newId, notify, save, type Escalation } from '@/lib/escalations'
 import { lookup } from '@/lib/lookup'
 import { fmtDate, fmtNum, isEmail } from '@/lib/format'
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const now = new Date()
     const item: Escalation = {
         id: newId(now), email, contact, problem, priority, status: 'open',
-        createdAt: now.toISOString(), createdBy: staff.name, updatedAt: now.toISOString(), notes: [], snapshot,
+        createdAt: now.toISOString(), createdBy: actorName(body.by, staff), updatedAt: now.toISOString(), notes: [], snapshot,
     }
     try {
         await save(item)

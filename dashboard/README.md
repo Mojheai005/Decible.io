@@ -8,6 +8,13 @@ It lives in the `dashboard/` folder of the Decible repo but is a separate app wi
 **The repo is public: never put the password or keys in any file here.** They live only in Vercel's
 environment variables (and in your own gitignored `.env.local`).
 
+## Who can use it
+
+Anyone on the team: open the site and enter the team password (`DASHBOARD_PASSWORD`). Nothing else is
+asked, and any number of people can be logged in at once, on any device. Each person can type their
+name in the box at the top (it is remembered in their browser); it is written on the grants and
+escalations they make. Left blank, they are recorded as "Team".
+
 ## What it does
 
 1. **Look up account**: type an email and see the plan and its dates, credits, how they sign in (and
@@ -77,8 +84,9 @@ npx vercel domains add dashboard.decible.io
 ## Security notes
 
 - The service-role key is only used on the server; the browser never sees it.
-- Login is one shared password plus the person's name. The session is a signed, HTTP-only cookie that
-  lasts 7 days. Five wrong passwords lock an address out for 15 minutes.
+- Login is one shared team password. The session is a signed, HTTP-only cookie that lasts 7 days.
+  Ten wrong passwords from one address lock that address out for 10 minutes (generous on purpose,
+  so a team sharing one office connection is not locked out by one person's typos).
 - To remove someone's access: change `DASHBOARD_PASSWORD` and `SESSION_SECRET` in Vercel and redeploy.
 - The site tells search engines not to index it and cannot be embedded in other sites.
 
