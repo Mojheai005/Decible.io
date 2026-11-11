@@ -1,0 +1,126 @@
+/* Support dashboard styles. Every rule is scoped to .dd (the /dashboard layout wrapper), so nothing
+   here touches the rest of decible.io, and the site's own variables are not overridden. */
+.dd {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --text: #15181e;
+    --muted: #5d6573;
+    --line: #e3e6eb;
+    --accent: #4f46e5;
+    --accent-text: #ffffff;
+    --ok: #157f3b;
+    --ok-bg: #e8f6ee;
+    --info: #2b5fb4;
+    --info-bg: #eaf1fc;
+    --warn: #9a5b00;
+    --warn-bg: #fdf3e2;
+    --bad: #b42318;
+    --bad-bg: #fdecea;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+    .dd {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --text: #e8eaee;
+        --muted: #9aa3b2;
+        --line: #2a2f3a;
+        --accent: #7c74ff;
+        --ok: #4ccf7c;
+        --ok-bg: #12291c;
+        --info: #78a6f0;
+        --info-bg: #142036;
+        --warn: #f0b456;
+        --warn-bg: #2d2412;
+        --bad: #ff7b6e;
+        --bad-bg: #331815;
+    }
+}
+.dd, .dd * { box-sizing: border-box; }
+.dd a { color: var(--accent); text-decoration: underline; }
+.dd h1, .dd h2, .dd h3 { margin: 0; line-height: 1.25; font-weight: 700; }
+.dd h2 { font-size: 16px; }
+.dd h3 { font-size: 14px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.dd p { margin: 0; }
+.dd ul:not(.findings) { list-style: disc; padding-left: 20px; margin: 4px 0; }
+.dd b { font-weight: 700; }
+
+.dd .wrap { max-width: 1120px; margin: 0 auto; padding: 16px; }
+.dd .topbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.dd .brand { font-weight: 700; font-size: 18px; }
+.dd .who { color: var(--muted); display: flex; gap: 10px; align-items: center; }
+
+.dd .status { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.dd .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+.dd .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dd .dot.ok { background: var(--ok); } .dd .dot.degraded { background: var(--warn); } .dd .dot.down { background: var(--bad); }
+
+.dd .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+.dd .tab { padding: 10px 14px; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+.dd .tab.on { color: var(--text); border-bottom-color: var(--accent); }
+
+.dd .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.dd .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dd .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.dd .stack > * + * { margin-top: 10px; }
+
+.dd input, .dd textarea, .dd select {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; min-width: 0;
+}
+.dd input[type="checkbox"] { padding: 0; width: auto; margin-top: 3px; }
+.dd input:focus, .dd textarea:focus, .dd select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.dd input.grow { flex: 1 1 260px; }
+.dd textarea { width: 100%; min-height: 110px; resize: vertical; }
+.dd label.field { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 13px; }
+.dd label.check { display: flex; gap: 8px; align-items: flex-start; }
+
+.dd .btn { font: inherit; font-weight: 600; border-radius: 8px; padding: 9px 14px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+.dd .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.dd .btn.danger { border-color: var(--bad); color: var(--bad); }
+.dd .btn.small { padding: 4px 10px; font-size: 13px; }
+.dd .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.dd .findings { list-style: none; margin: 0; padding: 0; }
+.dd .findings li { padding: 8px 10px 8px 12px; border-radius: 8px; margin-bottom: 6px; border-left: 4px solid; }
+.dd .lv-ok { background: var(--ok-bg); border-color: var(--ok); }
+.dd .lv-info { background: var(--info-bg); border-color: var(--info); }
+.dd .lv-warn { background: var(--warn-bg); border-color: var(--warn); }
+.dd .lv-bad { background: var(--bad-bg); border-color: var(--bad); }
+
+.dd .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--panel); }
+.dd .card .big { font-size: 22px; font-weight: 700; }
+.dd .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 13px; }
+.dd .kv dt { color: var(--muted); }
+.dd .kv dd { margin: 0; overflow-wrap: anywhere; }
+
+.dd .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: capitalize; background: var(--info-bg); color: var(--info); }
+.dd .badge.ok { background: var(--ok-bg); color: var(--ok); }
+.dd .badge.warn { background: var(--warn-bg); color: var(--warn); }
+.dd .badge.bad { background: var(--bad-bg); color: var(--bad); }
+
+.dd .table-wrap { overflow-x: auto; }
+.dd table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dd th, .dd td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.dd th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.dd th.num, .dd td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dd .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.dd .muted { color: var(--muted); }
+.dd .err { color: var(--bad); }
+.dd .small { font-size: 12px; }
+
+.dd .msg { padding: 10px 12px; border-radius: 8px; }
+.dd .msg.ok { background: var(--ok-bg); color: var(--ok); }
+.dd .msg.bad { background: var(--bad-bg); color: var(--bad); }
+.dd .msg.warn { background: var(--warn-bg); color: var(--warn); }
+
+.dd details > summary { cursor: pointer; font-weight: 600; }
+.dd .case { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: var(--panel); }
+.dd .case.urgent { border-left: 4px solid var(--bad); }
+.dd .notes { border-left: 2px solid var(--line); padding-left: 10px; margin: 8px 0; }
+
+.dd .login { max-width: 380px; margin: 12vh auto 0; }

@@ -20,6 +20,9 @@ import { NotificationDropdown } from './components/ui/NotificationDropdown';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from './hooks/useIsMobile';
 
+// Set in Vercel to show a notice to every logged-in user; leave unset normally.
+const SERVICE_NOTICE = process.env.NEXT_PUBLIC_SERVICE_NOTICE || '';
+
 const AppContent: React.FC = () => {
   const [view, setView] = useState('landing');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -272,20 +275,18 @@ const AppContent: React.FC = () => {
           </div>
         </header>
 
-        {/* Service Status Banner — set SHOW_SERVICE_BANNER to false to hide */}
-        {!bannerDismissed && (
+        {/* Service notice: shown only while NEXT_PUBLIC_SERVICE_NOTICE is set in
+            Vercel (redeploy after changing it). It used to be on permanently,
+            telling every visitor, buyers included, that the service was failing. */}
+        {SERVICE_NOTICE && !bannerDismissed && (
           <div className={`bg-amber-50 border-b border-amber-200 shrink-0 ${isMobile ? 'px-4 py-3' : 'px-6 py-3'}`}>
             <div className="flex items-start gap-3 max-w-5xl mx-auto">
               <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-amber-900 text-sm">
-                  We&apos;re experiencing temporary service disruptions
-                </p>
-                <p className="text-amber-700 mt-0.5 text-xs">
-                  Some voice generations may take longer than usual or fail intermittently. Our team is actively working with our infrastructure provider to resolve this. Your credits are safe — any failed generation is automatically refunded.
-                </p>
+                <p className="font-semibold text-amber-900 text-sm">Service notice</p>
+                <p className="text-amber-700 mt-0.5 text-xs">{SERVICE_NOTICE}</p>
               </div>
               <button
                 onClick={() => setBannerDismissed(true)}

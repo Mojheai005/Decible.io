@@ -324,7 +324,7 @@ export const Subscription: React.FC<SubscriptionProps> = ({ onNavigate }) => {
                         },
                         {
                             q: 'Is there a free trial?',
-                            a: 'Start free with 10,000 credits. Upgrade anytime for more.'
+                            a: 'Start free with 5,000 credits. Upgrade anytime for more.'
                         }
                     ].map((faq, i) => (
                         <div key={i} className="bg-gray-50 rounded-xl p-4">

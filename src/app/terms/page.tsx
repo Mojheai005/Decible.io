@@ -25,7 +25,7 @@ export default function TermsOfService() {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Terms of Service</h1>
-            <p className="text-gray-500 text-sm">Last updated: January 2025</p>
+            <p className="text-gray-500 text-sm">Last updated: October 2026</p>
           </div>
         </div>
 
@@ -87,8 +87,8 @@ export default function TermsOfService() {
           <section className="mb-10">
             <h2 className="text-xl font-bold text-gray-900 mb-4">6. Credits and Billing</h2>
             <div className="space-y-4 text-gray-600">
-              <p><strong className="text-gray-800">Credits:</strong> Our services operate on a credit-based system. Credits are consumed based on usage and do not carry over between billing periods unless otherwise specified.</p>
-              <p><strong className="text-gray-800">Payments:</strong> All payments are processed securely. Subscription fees are billed in advance on a recurring basis.</p>
+              <p><strong className="text-gray-800">Credits:</strong> Our services operate on a credit-based system. Credits are used as you generate audio, one credit per character of text. Credits you buy or receive do not expire: they stay in your account after a plan period ends.</p>
+              <p><strong className="text-gray-800">Payments:</strong> All payments are processed securely. Each plan or credit purchase is a one-time payment for what is shown at checkout; nothing renews or is charged automatically.</p>
               <p><strong className="text-gray-800">Refunds:</strong> Refunds may be issued at our discretion. Contact support for refund requests.</p>
             </div>
           </section>
