@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation'
-import { getStaff } from '@/lib/session'
+import { getStaff } from '@/lib/support-dashboard/session'
 import LoginForm from './LoginForm'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LoginPage() {
-    if (await getStaff()) redirect('/')
+    if (await getStaff()) redirect('/dashboard')
     return (
         <main className="wrap">
             <div className="login panel stack">

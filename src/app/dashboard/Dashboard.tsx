@@ -1,10 +1,10 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Finding, Grant, Lookalikes, LookupResult } from '@/lib/lookup'
-import type { GrantOutcome, GrantPlan } from '@/lib/grant'
-import type { Escalation, Status } from '@/lib/escalations'
-import type { EngineStatus } from '@/lib/status'
-import { fmtDate, fmtNum } from '@/lib/format'
+import type { Finding, Grant, Lookalikes, LookupResult } from '@/lib/support-dashboard/lookup'
+import type { GrantOutcome, GrantPlan } from '@/lib/support-dashboard/grant'
+import type { Escalation, Status } from '@/lib/support-dashboard/escalations'
+import type { EngineStatus } from '@/lib/support-dashboard/status'
+import { fmtDate, fmtNum } from '@/lib/support-dashboard/format'
 
 type Tab = 'lookup' | 'grant' | 'escalations'
 interface Req { email: string; n: number }
@@ -21,7 +21,7 @@ async function api<T>(url: string, body?: unknown, method?: string): Promise<Api
         ? { method: method || 'GET' }
         : { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     if (res.status === 401) {
-        window.location.href = '/login'
+        window.location.href = '/dashboard/login'
         return { ok: false, data: { error: 'Logged out' } as T & { error?: string } }
     }
     const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
@@ -57,8 +57,8 @@ export default function Dashboard() {
     }, [go])
 
     async function logout() {
-        await fetch('/api/logout', { method: 'POST' })
-        window.location.href = '/login'
+        await fetch('/dashboard/api/logout', { method: 'POST' })
+        window.location.href = '/dashboard/login'
     }
 
     return (
@@ -94,7 +94,7 @@ function StatusStrip() {
     useEffect(() => {
         let alive = true
         const load = async () => {
-            const { ok, data } = await api<{ engines: EngineStatus[]; lastGenerationAt: string | null }>('/api/status')
+            const { ok, data } = await api<{ engines: EngineStatus[]; lastGenerationAt: string | null }>('/dashboard/api/status')
             if (!alive) return
             if (ok) { setS(data); setErr('') } else setErr(data.error || 'Status unavailable')
         }
@@ -151,7 +151,7 @@ function LookupTab({ request, go }: { request: Req | null; go: (t: Tab, email?: 
         const value = e.trim().toLowerCase()
         if (!value) return
         setEmail(value); setBusy(true); setError('')
-        const { ok, data } = await api<LookupResult>(`/api/lookup?email=${encodeURIComponent(value)}`)
+        const { ok, data } = await api<LookupResult>(`/dashboard/api/lookup?email=${encodeURIComponent(value)}`)
         setBusy(false)
         if (ok) setR(data); else { setR(null); setError(data.error || 'Lookup failed') }
     }, [])
@@ -403,7 +403,7 @@ function GrantTab({ request, go }: { request: Req | null; go: (t: Tab, email?: s
         if (!value) return
         setEmail(value); setBusy(true); setError(''); setConfirmed(false)
         if (!keepOutcome) setOutcome(null)
-        const { ok, data } = await api<GrantPlan>('/api/grant', { mode: 'check', email: value })
+        const { ok, data } = await api<GrantPlan>('/dashboard/api/grant', { mode: 'check', email: value })
         setBusy(false)
         if (ok) setPlan(data); else { setPlan(null); setError(data.error || 'Check failed') }
     }, [])
@@ -414,7 +414,7 @@ function GrantTab({ request, go }: { request: Req | null; go: (t: Tab, email?: s
         if (!plan) return
         if (!window.confirm(`Grant 500,000 credits + 30 days of Pro to ${plan.email}?`)) return
         setBusy(true); setError('')
-        const { data } = await api<GrantOutcome>('/api/grant', { mode: 'grant', email: plan.email, reason, confirmed })
+        const { data } = await api<GrantOutcome>('/dashboard/api/grant', { mode: 'grant', email: plan.email, reason, confirmed })
         setBusy(false)
         if (data.error) setError(data.error)
         else setOutcome(data)
@@ -425,7 +425,7 @@ function GrantTab({ request, go }: { request: Req | null; go: (t: Tab, email?: s
         if (!plan) return
         if (!window.confirm(`Move the waiting course grant from ${from} to ${plan.email}? Only do this if ${from} is clearly a typo of this person's email.`)) return
         setBusy(true); setError('')
-        const { data } = await api<GrantOutcome>('/api/grant', { mode: 'move', email: plan.email, from })
+        const { data } = await api<GrantOutcome>('/dashboard/api/grant', { mode: 'move', email: plan.email, from })
         setBusy(false)
         if (data.error) setError(data.error)
         else setOutcome(data)
@@ -508,7 +508,7 @@ function EscalationsTab({ request, go }: { request: Req | null; go: (t: Tab, ema
     const problemRef = useRef<HTMLTextAreaElement>(null)
 
     const load = useCallback(async () => {
-        const { ok, data } = await api<{ items: Escalation[] }>('/api/escalations')
+        const { ok, data } = await api<{ items: Escalation[] }>('/dashboard/api/escalations')
         if (ok) { setItems(data.items); setLoadError('') } else setLoadError(data.error || 'Could not load')
     }, [])
     useEffect(() => { load() }, [load])
@@ -521,7 +521,7 @@ function EscalationsTab({ request, go }: { request: Req | null; go: (t: Tab, ema
     async function submit(e: React.FormEvent) {
         e.preventDefault()
         setBusy(true); setMsg(null)
-        const { ok, data } = await api<{ item: Escalation }>('/api/escalations', { email, contact, problem, priority })
+        const { ok, data } = await api<{ item: Escalation }>('/dashboard/api/escalations', { email, contact, problem, priority })
         setBusy(false)
         if (!ok) { setMsg({ ok: false, text: data.error || 'Could not save' }); return }
         setMsg({ ok: true, text: `Escalated ${data.item.email}. It is in the list below with a snapshot of the account.` })
@@ -530,7 +530,7 @@ function EscalationsTab({ request, go }: { request: Req | null; go: (t: Tab, ema
     }
 
     async function update(id: string, change: { status?: Status; note?: string }) {
-        const { ok, data } = await api<{ item: Escalation }>(`/api/escalations/${id}`, change, 'PATCH')
+        const { ok, data } = await api<{ item: Escalation }>(`/dashboard/api/escalations/${id}`, change, 'PATCH')
         if (ok) setItems(prev => (prev || []).map(x => x.id === id ? data.item : x))
         else window.alert(data.error || 'Could not update')
     }

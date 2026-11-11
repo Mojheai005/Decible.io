@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { requireStaff } from '@/lib/session'
-import { providerStatus } from '@/lib/status'
+import { requireStaff } from '@/lib/support-dashboard/session'
+import { providerStatus } from '@/lib/support-dashboard/status'
 
 export const dynamic = 'force-dynamic'
 

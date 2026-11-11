@@ -11,13 +11,13 @@ export default function LoginForm() {
         e.preventDefault()
         setBusy(true)
         setError('')
-        const res = await fetch('/api/login', {
+        const res = await fetch('/dashboard/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password }),
         })
         const data = await res.json().catch(() => ({}))
-        if (res.ok) window.location.href = '/'
+        if (res.ok) window.location.href = '/dashboard'
         else { setError(data.error || 'Could not log in.'); setBusy(false) }
     }
 

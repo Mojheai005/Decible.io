@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorName, requireStaff } from '@/lib/session'
-import { load, save, type Status } from '@/lib/escalations'
+import { actorName, requireStaff } from '@/lib/support-dashboard/session'
+import { load, save, type Status } from '@/lib/support-dashboard/escalations'
 
 export const dynamic = 'force-dynamic'
 

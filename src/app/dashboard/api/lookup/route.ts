@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaff } from '@/lib/session'
-import { lookup } from '@/lib/lookup'
-import { isEmail } from '@/lib/format'
+import { requireStaff } from '@/lib/support-dashboard/session'
+import { lookup } from '@/lib/support-dashboard/lookup'
+import { isEmail } from '@/lib/support-dashboard/format'
 
 export const dynamic = 'force-dynamic'
 

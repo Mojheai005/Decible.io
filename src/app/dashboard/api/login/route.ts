@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { COOKIE, createToken, passwordMatches, SESSION_DAYS } from '@/lib/session'
+import { checkPassword, COOKIE, COOKIE_PATH, createToken, SESSION_DAYS } from '@/lib/support-dashboard/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +20,11 @@ export async function POST(req: NextRequest) {
     try { body = await req.json() } catch { return NextResponse.json({ error: 'Bad request' }, { status: 400 }) }
     const password = String(body.password ?? '')
 
-    if (!password || !passwordMatches(password)) {
+    const result = await checkPassword(password)
+    if (result === 'unset') {
+        return NextResponse.json({ error: 'The dashboard password has not been set up yet.' }, { status: 503 })
+    }
+    if (result !== 'ok') {
         const cur = f && f.until > Date.now() ? f : { n: 0, until: Date.now() + LOCK_MS }
         fails.set(ip, { n: cur.n + 1, until: cur.until })
         await new Promise(r => setTimeout(r, 800))
@@ -29,11 +33,11 @@ export async function POST(req: NextRequest) {
 
     fails.delete(ip)
     const res = NextResponse.json({ ok: true })
-    res.cookies.set(COOKIE, createToken('Team'), {
+    res.cookies.set(COOKIE, await createToken('Team'), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        path: '/',
+        path: COOKIE_PATH,
         maxAge: SESSION_DAYS * 86400,
     })
     return res

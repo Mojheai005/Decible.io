@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
             {
                 userAgent: '*',
                 allow: '/',
-                disallow: ['/api/', '/auth/'],
+                disallow: ['/api/', '/auth/', '/dashboard'],
             },
         ],
         sitemap: 'https://www.decible.io/sitemap.xml',

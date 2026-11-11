@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorName, requireStaff } from '@/lib/session'
-import { list, newId, notify, save, type Escalation } from '@/lib/escalations'
-import { lookup } from '@/lib/lookup'
-import { fmtDate, fmtNum, isEmail } from '@/lib/format'
+import { actorName, requireStaff } from '@/lib/support-dashboard/session'
+import { list, newId, notify, save, type Escalation } from '@/lib/support-dashboard/escalations'
+import { lookup } from '@/lib/support-dashboard/lookup'
+import { fmtDate, fmtNum, isEmail } from '@/lib/support-dashboard/format'
 
 export const dynamic = 'force-dynamic'
 

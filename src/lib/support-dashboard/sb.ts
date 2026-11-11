@@ -9,7 +9,8 @@ export class SbError extends Error {
     }
 }
 
-const base = () => env('SUPABASE_URL').replace(/\/+$/, '')
+// Same Supabase project and keys as the rest of decible.io.
+const base = () => (process.env.SUPABASE_URL?.trim() || env('NEXT_PUBLIC_SUPABASE_URL')).replace(/\/+$/, '')
 
 async function call(path: string, init: RequestInit = {}): Promise<{ res: Response; text: string }> {
     const key = env('SUPABASE_SERVICE_ROLE_KEY')

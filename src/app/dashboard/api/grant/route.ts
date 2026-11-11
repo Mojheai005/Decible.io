@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorName, requireStaff } from '@/lib/session'
-import { executeGrant, moveGrant, planGrant } from '@/lib/grant'
-import { isEmail } from '@/lib/format'
+import { actorName, requireStaff } from '@/lib/support-dashboard/session'
+import { executeGrant, moveGrant, planGrant } from '@/lib/support-dashboard/grant'
+import { isEmail } from '@/lib/support-dashboard/format'
 
 export const dynamic = 'force-dynamic'
 
